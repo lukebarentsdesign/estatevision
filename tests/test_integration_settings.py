@@ -210,6 +210,14 @@ def test_list_integrations_endpoint_returns_all_systems(api_client) -> None:
     assert "openai" in slugs
 
 
+def test_list_integrations_includes_category_key_and_is_active(api_client) -> None:
+    resp = api_client.get("/api/integrations")
+    data = resp.json()
+    heygen = next(item for item in data if item["slug"] == "heygen")
+    assert heygen["category_key"] == "avatar"
+    assert heygen["is_active"] is True
+
+
 def test_set_field_endpoint_never_echoes_raw_secret(api_client) -> None:
     resp = api_client.put("/api/integrations/heygen/fields/api_key", json={"value": "hg_super_secret_999"})
     assert resp.status_code == 200

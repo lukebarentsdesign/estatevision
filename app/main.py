@@ -157,17 +157,21 @@ class SetFieldRequest(BaseModel):
     value: str
 
 
-def _serialize_status(status) -> dict:
+def _serialize_status(status, session: Session) -> dict:
     d = status.definition
+    from .services.active_vendor import get_active_vendor
+
     return {
         "slug": d.slug,
         "name": d.name,
         "category": d.category,
+        "category_key": d.category_key,
         "description": d.description,
         "docs_url": d.docs_url,
         "test_mode": d.test_mode.value,
         "used_by": list(d.used_by),
         "is_fully_configured": status.is_fully_configured,
+        "is_active": get_active_vendor(session, d.category_key) == d.slug,
         "fields": [
             {
                 "key": fs.field.key,
@@ -193,14 +197,14 @@ def list_integration_statuses(session: Session = Depends(get_session)) -> list[d
     Never returns raw secret values -- only masked previews (see `secrets_store.mask`).
     """
     settings = IntegrationSettings(session)
-    return [_serialize_status(s) for s in settings.all_statuses()]
+    return [_serialize_status(s, session) for s in settings.all_statuses()]
 
 
 @app.get("/api/integrations/{slug}")
 def get_integration_status(slug: str, session: Session = Depends(get_session)) -> dict:
     settings = IntegrationSettings(session)
     try:
-        return _serialize_status(settings.status_for(slug))
+        return _serialize_status(settings.status_for(slug), session)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
 
@@ -216,7 +220,7 @@ def set_integration_field(
         settings.set_field(slug, field_key, body.value)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return _serialize_status(settings.status_for(slug))
+    return _serialize_status(settings.status_for(slug), session)
 
 
 @app.delete("/api/integrations/{slug}/fields/{field_key}")
@@ -225,7 +229,7 @@ def clear_integration_field(
 ) -> dict:
     settings = IntegrationSettings(session)
     settings.clear_field(slug, field_key)
-    return _serialize_status(settings.status_for(slug))
+    return _serialize_status(settings.status_for(slug), session)
 
 
 @app.post("/api/integrations/{slug}/test")
