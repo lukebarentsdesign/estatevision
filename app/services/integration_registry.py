@@ -45,7 +45,8 @@ class ConnectionTestMode(str, Enum):
 class IntegrationDefinition:
     slug: str                    # storage key, e.g. "heygen"
     name: str                    # display name, e.g. "HeyGen"
-    category: str                # groups the admin UI list
+    category: str                # groups the admin UI list (display label)
+    category_key: str            # stable machine id; multiple vendors can share one
     description: str
     fields: tuple[CredentialField, ...]
     docs_url: str = ""
@@ -58,6 +59,7 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         slug="heygen",
         name="HeyGen",
         category="Avatar & Voice",
+        category_key="avatar",
         description="Verified avatar clones for the avatar pipeline (§1.3, §4 plus).",
         fields=(
             CredentialField("api_key", "API Key", FieldKind.API_KEY, help_text="From HeyGen account settings."),
@@ -72,6 +74,7 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         slug="elevenlabs",
         name="ElevenLabs",
         category="Avatar & Voice",
+        category_key="tts",
         description="Voice cloning and TTS for voice-only narration jobs (§1.3, §4 standard).",
         fields=(
             CredentialField("api_key", "API Key", FieldKind.API_KEY, help_text="From ElevenLabs profile settings."),
@@ -86,6 +89,7 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         slug="gemini_omni",
         name="Gemini Omni (Google)",
         category="Video & Image Generation",
+        category_key="hero_shot_animation",
         description="Hero-shot subtle zoom/pan animation for the exterior photo (§4 standard).",
         fields=(
             CredentialField("api_key", "API Key", FieldKind.API_KEY, help_text="Google AI Studio / Vertex API key."),
@@ -98,6 +102,7 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         slug="openai",
         name="OpenAI (or compatible)",
         category="Script Generation",
+        category_key="script_generation",
         description="LLM used to write property scripts, strictly grounded in brochure text (§1.1, §1.2).",
         fields=(
             CredentialField("api_key", "API Key", FieldKind.API_KEY),
@@ -114,6 +119,7 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         slug="google_3d_tiles",
         name="Google Photorealistic 3D Tiles",
         category="Video & Image Generation",
+        category_key="aerial_flyover",
         description="Aerial orbiting flyover render for cinematic-level jobs (§4 cinematic).",
         fields=(
             CredentialField("api_key", "API Key", FieldKind.API_KEY),
@@ -126,6 +132,7 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         slug="schools_api",
         name="DfE / Ofsted Schools API",
         category="Location Data",
+        category_key="schools_data",
         description="Nearest Outstanding/Good schools for the location insights panel (§5.1).",
         fields=(
             CredentialField("api_key", "API Key", FieldKind.API_KEY, required=False,
@@ -140,6 +147,7 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         slug="ofcom_broadband",
         name="Ofcom Broadband Checker",
         category="Location Data",
+        category_key="broadband_data",
         description="Broadband/mobile coverage for the location insights panel (§5.3).",
         fields=(
             CredentialField("api_key", "API Key", FieldKind.API_KEY, required=False),
