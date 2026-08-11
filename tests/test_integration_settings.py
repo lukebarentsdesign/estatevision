@@ -277,3 +277,10 @@ def test_set_active_vendor_endpoint_rejects_wrong_category(api_client) -> None:
 def test_set_active_vendor_endpoint_rejects_unknown_category(api_client) -> None:
     resp = api_client.put("/api/categories/not_a_real_category/active-vendor", json={"slug": "heygen"})
     assert resp.status_code == 400
+
+
+def test_openai_base_url_presets_endpoint(api_client) -> None:
+    resp = api_client.get("/api/integrations/openai/base-url-presets")
+    assert resp.status_code == 200
+    names = {p["name"] for p in resp.json()}
+    assert "Groq" in names

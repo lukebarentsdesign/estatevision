@@ -159,6 +159,19 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
     ),
 )
 
+# Known OpenAI-compatible chat-completions endpoints, offered as quick-fill
+# presets on the "openai" integration's base_url field in the admin panel.
+# The admin still supplies their own API key -- this only saves typing the
+# base URL. Sourced from providers with a documented OpenAI-compatible
+# `/chat/completions` endpoint as of 2026-08.
+OPENAI_COMPATIBLE_PRESETS: tuple[dict[str, str], ...] = (
+    {"name": "OpenAI", "base_url": "https://api.openai.com/v1"},
+    {"name": "Groq", "base_url": "https://api.groq.com/openai/v1"},
+    {"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1"},
+    {"name": "Together AI", "base_url": "https://api.together.xyz/v1"},
+    {"name": "Cerebras", "base_url": "https://api.cerebras.ai/v1"},
+)
+
 _BY_SLUG: dict[str, IntegrationDefinition] = {i.slug: i for i in INTEGRATIONS}
 
 

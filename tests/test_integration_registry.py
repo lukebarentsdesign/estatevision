@@ -20,3 +20,13 @@ def test_avatar_and_tts_and_hero_shot_categories_have_expected_members() -> None
     assert by_category["aerial_flyover"] == ["google_3d_tiles"]
     assert by_category["schools_data"] == ["schools_api"]
     assert by_category["broadband_data"] == ["ofcom_broadband"]
+
+
+def test_openai_compatible_presets_exist() -> None:
+    from app.services.integration_registry import OPENAI_COMPATIBLE_PRESETS
+
+    names = {p["name"] for p in OPENAI_COMPATIBLE_PRESETS}
+    assert "Groq" in names
+    assert "OpenRouter" in names
+    for preset in OPENAI_COMPATIBLE_PRESETS:
+        assert preset["base_url"].startswith("https://")

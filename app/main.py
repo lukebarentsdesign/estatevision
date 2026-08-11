@@ -251,6 +251,13 @@ def set_category_active_vendor(
     return [_serialize_status(s, session) for s in settings.all_statuses()]
 
 
+@app.get("/api/integrations/openai/base-url-presets")
+def openai_base_url_presets() -> list[dict]:
+    from .services.integration_registry import OPENAI_COMPATIBLE_PRESETS
+
+    return list(OPENAI_COMPATIBLE_PRESETS)
+
+
 @app.post("/api/integrations/{slug}/test")
 def test_integration_connection(slug: str, session: Session = Depends(get_session)) -> dict:
     try:
