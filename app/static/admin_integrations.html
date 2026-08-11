@@ -39,6 +39,23 @@
   }
   .category-heading:first-child { margin-top: 0; }
 
+  .vendor-active-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+  .vendor-active-row input[type="radio"] { accent-color: var(--accent); }
+  .vendor-active-row label { cursor: pointer; }
+  .active-badge {
+    display: inline-block;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ok); border: 1px solid rgba(62, 207, 142, 0.35);
+    border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle;
+  }
+
   .card {
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -179,14 +196,33 @@ function render() {
   const app = document.getElementById("app");
   const categories = [...new Set(state.map(i => i.category))];
 
-  const configuredCount = state.filter(i => i.is_fully_configured).length;
+  const configuredCount = state.filter(i => i.is_active && i.is_fully_configured).length;
+  const activeCount = state.filter(i => i.is_active).length;
   document.getElementById("summary").innerHTML =
-    `<span><b>${configuredCount}</b> / ${state.length} fully configured</span>`;
+    `<span><b>${configuredCount}</b> / ${activeCount} active vendors fully configured</span>`;
 
-  app.innerHTML = categories.map(cat => `
-    <div class="category-heading">${escapeHtml(cat)}</div>
-    ${state.filter(i => i.category === cat).map(renderCard).join("")}
-  `).join("");
+  app.innerHTML = categories.map(cat => {
+    const itemsInCat = state.filter(i => i.category === cat);
+    const categoryKeys = [...new Set(itemsInCat.map(i => i.category_key))];
+    return categoryKeys.map(catKey => {
+      const vendors = itemsInCat.filter(i => i.category_key === catKey);
+      const heading = vendors.length > 1 ? `${escapeHtml(cat)} — choose active vendor` : escapeHtml(cat);
+      const radioRow = vendors.length > 1 ? `
+        <div class="vendor-active-row">
+          ${vendors.map(v => `
+            <label>
+              <input type="radio" name="active-${catKey}" value="${v.slug}" ${v.is_active ? "checked" : ""}>
+              ${escapeHtml(v.name)}
+            </label>
+          `).join("")}
+        </div>` : "";
+      return `
+        <div class="category-heading">${heading}</div>
+        ${radioRow}
+        ${vendors.map(renderCard).join("")}
+      `;
+    }).join("");
+  }).join("");
 
   state.forEach(item => {
     const cardEl = document.getElementById(`card-${item.slug}`);
@@ -202,21 +238,36 @@ function render() {
       if (input) input.addEventListener("keydown", e => {
         if (e.key === "Enter") saveField(item.slug, f.key, input);
       });
+      const presetSelect = document.getElementById(`preset-${item.slug}-${f.key}`);
+      if (presetSelect) {
+        loadOpenAiPresets(presetSelect, input);
+      }
     });
     const testBtn = document.getElementById(`test-${item.slug}`);
     if (testBtn) testBtn.addEventListener("click", () => testConn(item.slug));
+  });
+
+  document.querySelectorAll(".vendor-active-row input[type=radio]").forEach(radio => {
+    radio.addEventListener("change", e => {
+      if (e.target.checked) setActiveVendor(e.target.name.replace("active-", ""), e.target.value);
+    });
   });
 }
 
 function renderCard(item) {
   const cls = statusClass(item);
-  const fieldsHtml = item.fields.map(f => `
+  const fieldsHtml = item.fields.map(f => {
+    const presetSelect = (item.slug === "openai" && f.key === "base_url")
+      ? `<select id="preset-${item.slug}-${f.key}" style="margin-right:8px;"><option value="">Preset…</option></select>`
+      : "";
+    return `
     <div class="field-row">
       <div class="field-label">
         <label for="input-${item.slug}-${f.key}">${escapeHtml(f.label)}${f.required ? '<span class="req">*</span>' : ''}</label>
         <span class="field-source">${f.is_set ? (f.source === 'environment' ? 'from .env' : 'saved') : 'not set'}</span>
       </div>
       <div class="field-input-row">
+        ${presetSelect}
         <input
           type="${f.is_secret ? 'password' : 'text'}"
           id="input-${item.slug}-${f.key}"
@@ -229,7 +280,8 @@ function renderCard(item) {
       </div>
       ${f.help_text ? `<div class="field-help">${escapeHtml(f.help_text)}</div>` : ''}
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   return `
     <div class="card" id="card-${item.slug}">
@@ -237,7 +289,7 @@ function renderCard(item) {
         <div class="card-title">
           <span class="status-dot ${cls}"></span>
           <div>
-            <h2>${escapeHtml(item.name)}</h2>
+            <h2>${escapeHtml(item.name)}${item.is_active ? '<span class="active-badge">Active</span>' : ''}</h2>
             <div class="desc">${escapeHtml(item.description)}</div>
           </div>
         </div>
@@ -281,6 +333,35 @@ async function clearField(slug, fieldKey) {
   showToast("Cleared.");
   await loadAll();
   document.getElementById(`card-${slug}`).classList.add("open");
+}
+
+async function setActiveVendor(categoryKey, slug) {
+  const res = await fetch(`/api/categories/${categoryKey}/active-vendor`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slug }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    showToast(`Error: ${err.detail || res.statusText}`);
+    await loadAll();
+    return;
+  }
+  showToast(`${slug} is now active.`);
+  await loadAll();
+}
+
+let openAiPresetsCache = null;
+async function loadOpenAiPresets(selectEl, inputEl) {
+  if (!openAiPresetsCache) {
+    const res = await fetch("/api/integrations/openai/base-url-presets");
+    openAiPresetsCache = await res.json();
+  }
+  selectEl.innerHTML = `<option value="">Preset…</option>` +
+    openAiPresetsCache.map(p => `<option value="${escapeHtml(p.base_url)}">${escapeHtml(p.name)}</option>`).join("");
+  selectEl.addEventListener("change", () => {
+    if (selectEl.value) inputEl.value = selectEl.value;
+  });
 }
 
 async function testConn(slug) {
