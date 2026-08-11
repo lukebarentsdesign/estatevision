@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from ...clients.credential_lookup import resolve_field
-from ...clients.elevenlabs import get_elevenlabs_client
+from ...clients.dispatch import get_active_tts_client
 from ...models import FeatureLevel
 from ...services.compliance import assert_price_free
 from ...services.script_prompt import ScriptJobContext, ScriptVariant, build_prompt
@@ -102,7 +102,7 @@ class ScriptAndVoiceStep(PipelineStep):
         out_dir = ctx.work_dir / "audio"
         audio_paths: dict[str, str] = {}
         if voice_id:
-            client = get_elevenlabs_client()
+            client = get_active_tts_client()
             for key, text in scripts.items():
                 if key == ScriptVariant.AVATAR_OPENING.value:
                     continue

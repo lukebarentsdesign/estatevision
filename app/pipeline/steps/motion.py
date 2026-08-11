@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...clients.gemini_omni import get_gemini_omni_client
+from ...clients.dispatch import get_active_hero_shot_client
 from ...clients.local_tools import depthflow_parallax
 from ...models import FeatureLevel
 from ..contract import JobContext, PipelineStep, StepResult, StepStatus
@@ -24,7 +24,7 @@ class MotionPassStep(PipelineStep):
         photos = ctx.job_snapshot["photos"]
         processed_paths = ctx.artifact("restoration_pass", "processed_paths")
         out_dir = ctx.work_dir / "motion"
-        gemini = get_gemini_omni_client()
+        gemini = get_active_hero_shot_client()
 
         clip_paths: dict[str, str] = {}
         for photo in photos:

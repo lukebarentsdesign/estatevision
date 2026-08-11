@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...clients.heygen import get_heygen_client
+from ...clients.dispatch import get_active_avatar_client
 from ...clients.local_tools import whisperx_word_timestamps
 from ...models import FeatureLevel
 from ...services.compliance import assert_price_free
@@ -46,7 +46,7 @@ class AvatarIntroStep(PipelineStep):
                 "this should have been caught before the pipeline started."
             )
 
-        client = get_heygen_client()
+        client = get_active_avatar_client()
         clip_path = client.generate_avatar_clip(
             avatar_id=avatar_id,
             script_text=opening_line,
