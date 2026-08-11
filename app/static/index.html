@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Property Content Studio — Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --panel: #14171f;
+      --panel-border: #262b38;
+      --text: #e6e8ee;
+      --accent: #5b8cff;
+    }
+    body { background-color: var(--bg); color: var(--text); }
+  </style>
+</head>
+<body class="font-sans antialiased">
+  <div id="app" class="min-h-screen flex flex-col">
+    <!-- Navigation Bar -->
+    <nav class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+          <div class="bg-indigo-600 text-white font-bold px-3 py-1.5 rounded-lg tracking-wider text-sm flex items-center gap-2">
+            <span>🎬</span> PROPERTY CONTENT STUDIO
+          </div>
+          <span class="text-xs text-slate-400 border-l border-slate-700 pl-4">Production Desk & CRM</span>
+        </div>
+        <div class="flex items-center space-x-6 text-sm font-medium">
+          <button onclick="switchTab('dashboard')" id="nav-dashboard" class="text-indigo-400 font-semibold border-b-2 border-indigo-500 pb-1">Jobs Dashboard</button>
+          <button onclick="switchTab('agents')" id="nav-agents" class="text-slate-400 hover:text-slate-200 transition pb-1">Agent Profiles</button>
+          <a href="/admin/integrations" class="text-slate-400 hover:text-slate-200 transition">API Integrations ⚙️</a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
+      <!-- Section 1: CRM & Jobs Dashboard -->
+      <section id="sec-dashboard">
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">Production Pipeline</h1>
+            <p class="text-slate-400 text-sm">Manage property media ingestion, script approval, and video exports.</p>
+          </div>
+          <button onclick="openNewJobModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg transition flex items-center gap-2">
+            <span>+</span> Create New Property Job
+          </button>
+        </div>
+
+        <!-- Kanban Board Columns -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6" id="kanban-board">
+          <!-- Ingestion -->
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center justify-between">
+              <span>📥 Ingestion</span>
+              <span id="count-ingestion" class="bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">0</span>
+            </h3>
+            <div id="col-ingestion" class="space-y-3"></div>
+          </div>
+          <!-- Processing -->
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-amber-400 mb-4 flex items-center justify-between">
+              <span>⚙️ Processing</span>
+              <span id="count-processing" class="bg-slate-800 text-amber-300 px-2 py-0.5 rounded-full">0</span>
+            </h3>
+            <div id="col-processing" class="space-y-3"></div>
+          </div>
+          <!-- Review -->
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-indigo-400 mb-4 flex items-center justify-between">
+              <span>👀 Review</span>
+              <span id="count-review" class="bg-slate-800 text-indigo-300 px-2 py-0.5 rounded-full">0</span>
+            </h3>
+            <div id="col-review" class="space-y-3"></div>
+          </div>
+          <!-- Completed -->
+          <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-4 flex items-center justify-between">
+              <span>✅ Completed</span>
+              <span id="count-completed" class="bg-slate-800 text-emerald-300 px-2 py-0.5 rounded-full">0</span>
+            </h3>
+            <div id="col-completed" class="space-y-3"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Agent Profiles -->
+      <section id="sec-agents" class="hidden">
+        <div class="flex items-center justify-between mb-8">
+          <div>
+            <h1 class="text-2xl font-bold text-white tracking-tight">Agent & Agency Profiles</h1>
+            <p class="text-slate-400 text-sm">Manage agency branding, colors, and AI voice/avatar consent credentials.</p>
+          </div>
+          <button onclick="openNewAgentModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-lg transition">
+            + Add Agent Profile
+          </button>
+        </div>
+
+        <div id="agents-grid" class="grid grid-cols-1 md:grid-cols-3 gap-6"></div>
+      </section>
+
+      <!-- Section 3: Job Workspace View -->
+      <section id="sec-workspace" class="hidden">
+        <div class="flex items-center justify-between mb-6">
+          <button onclick="switchTab('dashboard')" class="text-slate-400 hover:text-white text-sm flex items-center gap-1 font-medium">
+            ← Back to Pipeline
+          </button>
+          <div class="flex items-center space-x-3">
+            <button id="btn-run-pipeline" onclick="triggerJobRun()" class="bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm px-4 py-2 rounded-xl transition flex items-center gap-2">
+              ⚡ Execute Pipeline Pass
+            </button>
+            <a id="btn-export-pack" href="#" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-4 py-2 rounded-xl transition flex items-center gap-2">
+              📦 Download Export Pack (ZIP)
+            </a>
+          </div>
+        </div>
+
+        <!-- Workspace Layout: 3 Columns -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Left 3 Cols: Job Setup -->
+          <div class="lg:col-span-3 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <h2 class="text-lg font-bold text-white" id="ws-address">Loading Job...</h2>
+            <p class="text-xs text-slate-400" id="ws-postcode"></p>
+            <hr class="border-slate-800" />
+
+            <div>
+              <label class="text-xs font-semibold text-slate-400 uppercase">Internal Price Guide (CRM Only)</label>
+              <div id="ws-price" class="text-sm font-semibold text-amber-400 bg-amber-950/40 border border-amber-800/40 p-2.5 rounded-lg mt-1"></div>
+              <p class="text-[10px] text-slate-500 mt-1">🔒 Guaranteed excluded from script prompts & audio (§1.2 compliance).</p>
+            </div>
+
+            <div>
+              <label class="text-xs font-semibold text-slate-400 uppercase">Feature Level</label>
+              <div id="ws-feature-level" class="text-sm text-slate-200 capitalize font-medium mt-1"></div>
+            </div>
+
+            <div>
+              <label class="text-xs font-semibold text-slate-400 uppercase">Narration Format</label>
+              <div id="ws-avatar-toggle" class="text-sm text-indigo-400 font-medium mt-1"></div>
+            </div>
+
+            <hr class="border-slate-800" />
+
+            <!-- Location Insights -->
+            <div>
+              <h3 class="text-xs font-bold text-slate-300 uppercase mb-2">UK Location Insights (§5)</h3>
+              <button onclick="fetchLocationData()" class="w-full bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-medium py-2 rounded-lg transition mb-3">
+                🔄 Fetch School & Broadband Data
+              </button>
+              <div id="ws-location-data" class="text-xs text-slate-400 space-y-2"></div>
+            </div>
+          </div>
+
+          <!-- Middle 6 Cols: Script & Media Editor -->
+          <div class="lg:col-span-6 space-y-6">
+            <!-- Script Editor -->
+            <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                  <span>📜 Voiceover Script (§1.1 Grounded)</span>
+                </h3>
+                <button onclick="saveScript()" class="bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white px-3 py-1.5 rounded-lg">Save Edits</button>
+              </div>
+              <textarea id="ws-script-text" rows="6" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 leading-relaxed"></textarea>
+            </div>
+
+            <!-- Social Shorts -->
+            <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5">
+              <h3 class="text-base font-bold text-white mb-3">📱 Social Media Shorts (15-30s)</h3>
+              <div id="ws-social-shorts" class="space-y-3"></div>
+            </div>
+          </div>
+
+          <!-- Right 3 Cols: Video Assembly & Preview -->
+          <div class="lg:col-span-3 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <h3 class="text-base font-bold text-white">🎬 Remotion Assembly</h3>
+            <p class="text-xs text-slate-400">Renders Master (16:9) + Social Reels (9:16) with strict §1.4 AI badge compliance.</p>
+            
+            <div class="aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center text-slate-500 text-xs">
+              <div class="text-center p-4">
+                <p class="font-semibold text-slate-400 mb-1">Remotion Engine</p>
+                <p class="text-[10px]">Unconditional disclosure badge enabled on ControlNet frames.</p>
+              </div>
+            </div>
+
+            <div class="space-y-2 pt-2">
+              <div class="text-xs text-slate-300 flex justify-between">
+                <span>Master 16:9 Composition:</span>
+                <span class="text-emerald-400 font-semibold">Master16x9</span>
+              </div>
+              <div class="text-xs text-slate-300 flex justify-between">
+                <span>Social 9:16 Reel Composition:</span>
+                <span class="text-emerald-400 font-semibold">Reel9x16</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- New Job Modal -->
+  <div id="modal-new-job" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4">
+      <h2 class="text-xl font-bold text-white">Create New Property Job</h2>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase">Agent Profile</label>
+          <select id="mj-agent-id" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1"></select>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase">Property Address</label>
+          <input id="mj-address" type="text" placeholder="e.g. 10 Downing Street, London" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-slate-400 uppercase">Postcode</label>
+            <input id="mj-postcode" type="text" placeholder="SW1A 2AA" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-slate-400 uppercase">Garden Orientation</label>
+            <input id="mj-garden" type="text" placeholder="South-West" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+          </div>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-amber-400 uppercase">Internal Price Guide (CRM Only)</label>
+          <input id="mj-price" type="text" placeholder="e.g. £1,250,000" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-slate-400 uppercase">Feature Level</label>
+            <select id="mj-feature-level" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1">
+              <option value="standard">Standard</option>
+              <option value="plus">Plus</option>
+              <option value="cinematic">Cinematic</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-slate-400 uppercase">Avatar Narration</label>
+            <select id="mj-use-avatar" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1">
+              <option value="false">Voice-Only (ElevenLabs)</option>
+              <option value="true">Avatar Intro (HeyGen)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end space-x-3 pt-4 border-t border-slate-800">
+        <button onclick="closeModal('modal-new-job')" class="px-4 py-2 text-sm text-slate-400 hover:text-white font-medium">Cancel</button>
+        <button onclick="submitCreateJob()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2 rounded-xl">Create Job</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Agent Modal -->
+  <div id="modal-new-agent" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4">
+      <h2 class="text-xl font-bold text-white">Add Agent Profile</h2>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase">Agency Name</label>
+          <input id="ma-agency" type="text" placeholder="Premier Estates" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase">Staff Member Name</label>
+          <input id="ma-staff" type="text" placeholder="John Smith" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-slate-400 uppercase">Primary Color (Hex)</label>
+            <input id="ma-color1" type="text" value="#1E293B" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-slate-400 uppercase">Secondary Color (Hex)</label>
+            <input id="ma-color2" type="text" value="#0F172A" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+          </div>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase">ElevenLabs Voice ID</label>
+          <input id="ma-voice-id" type="text" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-400 uppercase">HeyGen Avatar ID</label>
+          <input id="ma-avatar-id" type="text" placeholder="e.g. Anna_public_3_20240108" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2.5 mt-1" />
+        </div>
+        <!-- §1.3 Mandatory Consent Safeguard Checkbox -->
+        <div class="bg-amber-950/40 border border-amber-800/40 rounded-xl p-3 mt-2">
+          <label class="flex items-start space-x-3 cursor-pointer">
+            <input id="ma-consent" type="checkbox" class="mt-1 accent-amber-500 rounded" />
+            <span class="text-xs text-amber-200 leading-normal">
+              <strong>Explicit Consent Safeguard (§1.3):</strong> I confirm that explicit, specific consent for AI voice cloning has been obtained from the person being cloned before saving this ElevenLabs Voice ID.
+            </span>
+          </label>
+        </div>
+      </div>
+      <div class="flex justify-end space-x-3 pt-4 border-t border-slate-800">
+        <button onclick="closeModal('modal-new-agent')" class="px-4 py-2 text-sm text-slate-400 hover:text-white font-medium">Cancel</button>
+        <button onclick="submitCreateAgent()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm px-4 py-2 rounded-xl">Save Agent</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentJobId = null;
+
+    async function loadDashboard() {
+      const res = await fetch('/api/jobs');
+      const jobs = await res.json();
+
+      ['ingestion', 'processing', 'review', 'completed'].forEach(st => {
+        document.getElementById(`col-${st}`).innerHTML = '';
+      });
+
+      const counts = { ingestion: 0, processing: 0, review: 0, completed: 0 };
+
+      jobs.forEach(job => {
+        const st = job.status || 'ingestion';
+        counts[st] = (counts[st] || 0) + 1;
+        const col = document.getElementById(`col-${st}`);
+        if (col) {
+          col.appendChild(createJobCard(job));
+        }
+      });
+
+      Object.keys(counts).forEach(st => {
+        const el = document.getElementById(`count-${st}`);
+        if (el) el.innerText = counts[st];
+      });
+    }
+
+    function createJobCard(job) {
+      const card = document.createElement('div');
+      card.className = 'bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-indigo-500/50 transition cursor-pointer shadow-md';
+      card.onclick = () => openWorkspace(job.id);
+      card.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+          <h4 class="font-bold text-slate-100 text-sm leading-snug">${job.address}</h4>
+          <span class="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-800/40">${job.feature_level}</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">${job.postcode} • ${job.garden_orientation}</p>
+        <div class="text-xs text-amber-400 font-semibold bg-amber-950/30 px-2.5 py-1 rounded border border-amber-800/30 flex items-center justify-between">
+          <span>${job.price_guide || 'Price on App'}</span>
+          <span class="text-[10px] text-slate-500 font-normal">CRM internal</span>
+        </div>
+      `;
+      return card;
+    }
+
+    async function loadAgents() {
+      const res = await fetch('/api/agents');
+      const agents = await res.json();
+      const grid = document.getElementById('agents-grid');
+      grid.innerHTML = '';
+
+      const select = document.getElementById('mj-agent-id');
+      select.innerHTML = '<option value="">-- Select Agent Profile --</option>';
+
+      agents.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.innerText = `${a.agency_name} (${a.staff_name || 'Team'})`;
+        select.appendChild(opt);
+
+        const card = document.createElement('div');
+        card.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3';
+        card.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white" style="background-color: ${a.primary_color}">
+              ${a.agency_name ? a.agency_name[0] : 'A'}
+            </div>
+            <div>
+              <h3 class="font-bold text-white text-base">${a.agency_name}</h3>
+              <p class="text-xs text-slate-400">${a.staff_name || 'No staff assigned'}</p>
+            </div>
+          </div>
+          <div class="text-xs space-y-1.5 pt-2 text-slate-300">
+            <div><span class="text-slate-500">ElevenLabs Voice ID:</span> ${a.elevenlabs_voice_id || 'Not set'}</div>
+            <div><span class="text-slate-500">HeyGen Avatar ID:</span> ${a.heygen_avatar_id || 'Not set'}</div>
+            <div><span class="text-slate-500">Consent Verified (§1.3):</span> ${a.voice_consent_confirmed ? '✅ Yes' : '❌ Pending'}</div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    async function openWorkspace(jobId) {
+      currentJobId = jobId;
+      const res = await fetch(`/api/jobs/${jobId}`);
+      const job = await res.json();
+
+      document.getElementById('ws-address').innerText = job.address;
+      document.getElementById('ws-postcode').innerText = `${job.postcode} • Orientation: ${job.garden_orientation}`;
+      document.getElementById('ws-price').innerText = job.price_guide || 'No price set';
+      document.getElementById('ws-feature-level').innerText = job.feature_level;
+      document.getElementById('ws-avatar-toggle').innerText = job.use_avatar ? 'HeyGen Avatar Intro Enabled' : 'ElevenLabs Voice-Only Narration';
+
+      const btnExport = document.getElementById('btn-export-pack');
+      btnExport.href = `/api/jobs/${jobId}/export`;
+
+      const scriptJson = job.script_json || {};
+      document.getElementById('ws-script-text').value = scriptJson.walkthrough_script || '';
+      
+      const shortsDiv = document.getElementById('ws-social-shorts');
+      shortsDiv.innerHTML = '';
+      (scriptJson.social_shorts || ['Social short #1 preview', 'Social short #2 preview']).forEach((s, idx) => {
+        const item = document.createElement('div');
+        item.className = 'bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300';
+        item.innerHTML = `<span class="font-bold text-indigo-400">Short #${idx + 1}:</span> ${s}`;
+        shortsDiv.appendChild(item);
+      });
+
+      renderLocationData(job.location_data_json);
+      switchTab('workspace');
+    }
+
+    async function triggerJobRun() {
+      if (!currentJobId) return;
+      const btn = document.getElementById('btn-run-pipeline');
+      btn.innerText = '⏳ Executing Pipeline...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/jobs/${currentJobId}/run`, { method: 'POST' });
+        if (res.ok) {
+          alert('Pipeline run complete! Review script and exports.');
+          openWorkspace(currentJobId);
+        } else {
+          const err = await res.json();
+          alert('Pipeline execution failed: ' + (err.detail || 'Unknown error'));
+        }
+      } finally {
+        btn.innerText = '⚡ Execute Pipeline Pass';
+        btn.disabled = false;
+      }
+    }
+
+    async function saveScript() {
+      if (!currentJobId) return;
+      const text = document.getElementById('ws-script-text').value;
+      await fetch(`/api/jobs/${currentJobId}/script`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walkthrough_script: text })
+      });
+      alert('Script changes saved.');
+    }
+
+    async function fetchLocationData() {
+      if (!currentJobId) return;
+      const res = await fetch(`/api/jobs/${currentJobId}/location`, { method: 'POST' });
+      const data = await res.json();
+      renderLocationData(data);
+    }
+
+    function renderLocationData(data) {
+      const container = document.getElementById('ws-location-data');
+      if (!data || Object.keys(data).length === 0) {
+        container.innerHTML = '<p class="text-slate-500 italic">No location data fetched yet.</p>';
+        return;
+      }
+      const schools = (data.schools || []).slice(0, 2).map(s => `<li>• ${s.name} (${s.rating})</li>`).join('');
+      container.innerHTML = `
+        <div><strong>Daylight:</strong> ${data.daylight_statement || 'N/A'}</div>
+        <div><strong>Broadband:</strong> ${data.broadband?.max_download_speed || 'Ultrafast'}</div>
+        <div><strong>Schools:</strong><ul class="pl-2 mt-1 space-y-0.5">${schools || 'None'}</ul></div>
+      `;
+    }
+
+    function switchTab(tab) {
+      ['sec-dashboard', 'sec-agents', 'sec-workspace'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      if (tab === 'dashboard') {
+        document.getElementById('sec-dashboard').classList.remove('hidden');
+        loadDashboard();
+      } else if (tab === 'agents') {
+        document.getElementById('sec-agents').classList.remove('hidden');
+        loadAgents();
+      } else if (tab === 'workspace') {
+        document.getElementById('sec-workspace').classList.remove('hidden');
+      }
+    }
+
+    function openNewJobModal() {
+      loadAgents();
+      document.getElementById('modal-new-job').classList.remove('hidden');
+    }
+    function openNewAgentModal() {
+      document.getElementById('modal-new-agent').classList.remove('hidden');
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    async function submitCreateJob() {
+      const agentId = document.getElementById('mj-agent-id').value;
+      const address = document.getElementById('mj-address').value;
+      const postcode = document.getElementById('mj-postcode').value;
+      const garden = document.getElementById('mj-garden').value;
+      const price = document.getElementById('mj-price').value;
+      const featureLevel = document.getElementById('mj-feature-level').value;
+      const useAvatar = document.getElementById('mj-use-avatar').value === 'true';
+
+      if (!address || !postcode) {
+        alert('Address and Postcode are required');
+        return;
+      }
+
+      await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent_id: agentId ? parseInt(agentId) : null,
+          address,
+          postcode,
+          garden_orientation: garden || 'South-West',
+          price_guide: price,
+          feature_level: featureLevel,
+          use_avatar: useAvatar
+        })
+      });
+
+      closeModal('modal-new-job');
+      loadDashboard();
+    }
+
+    async function submitCreateAgent() {
+      const agencyName = document.getElementById('ma-agency').value;
+      const staffName = document.getElementById('ma-staff').value;
+      const primaryColor = document.getElementById('ma-color1').value;
+      const secondaryColor = document.getElementById('ma-color2').value;
+      const voiceId = document.getElementById('ma-voice-id').value;
+      const avatarId = document.getElementById('ma-avatar-id').value;
+      const consentConfirmed = document.getElementById('ma-consent').checked;
+
+      if (!agencyName) {
+        alert('Agency Name is required');
+        return;
+      }
+
+      await fetch('/api/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agency_name: agencyName,
+          staff_name: staffName,
+          primary_color: primaryColor,
+          secondary_color: secondaryColor,
+          elevenlabs_voice_id: voiceId,
+          heygen_avatar_id: avatarId,
+          voice_consent_confirmed: consentConfirmed
+        })
+      });
+
+      closeModal('modal-new-agent');
+      loadAgents();
+    }
+
+    // Initial load
+    loadDashboard();
+  </script>
+</body>
+</html>

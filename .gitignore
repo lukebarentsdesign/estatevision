@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local data + working files
+*.db
+*.sqlite3
+work/
+uploads/
+output/
+
+# Remotion
+node_modules/
+remotion/out/
+
+.env
+secret.key

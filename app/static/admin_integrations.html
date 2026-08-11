@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Property Content Studio — Integrations</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #14171f;
+    --panel-border: #262b38;
+    --text: #e6e8ee;
+    --text-dim: #8b91a3;
+    --accent: #5b8cff;
+    --ok: #3ecf8e;
+    --warn: #f2b84b;
+    --bad: #f2555a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    padding: 32px 24px 80px;
+  }
+  header { max-width: 980px; margin: 0 auto 28px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .sub { color: var(--text-dim); font-size: 0.9rem; }
+  main { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+  .category-heading {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin: 20px 0 4px;
+  }
+  .category-heading:first-child { margin-top: 0; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+  }
+  .card-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card-title { display: flex; align-items: center; gap: 10px; }
+  .card-title h2 { font-size: 1rem; margin: 0; }
+  .status-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+    background: var(--bad);
+  }
+  .status-dot.ok { background: var(--ok); }
+  .status-dot.partial { background: var(--warn); }
+  .desc { color: var(--text-dim); font-size: 0.85rem; margin-top: 2px; }
+  .used-by { color: var(--text-dim); font-size: 0.78rem; margin-top: 8px; }
+  .used-by code { font-family: var(--mono); background: #1c202b; padding: 1px 5px; border-radius: 4px; }
+
+  .chevron { color: var(--text-dim); transition: transform 0.15s ease; }
+  .card.open .chevron { transform: rotate(90deg); }
+
+  .card-body { display: none; margin-top: 16px; border-top: 1px solid var(--panel-border); padding-top: 16px; }
+  .card.open .card-body { display: block; }
+
+  .field-row { margin-bottom: 14px; }
+  .field-row:last-child { margin-bottom: 0; }
+  .field-label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+  .field-label label { font-size: 0.85rem; font-weight: 600; }
+  .field-label .req { color: var(--bad); font-size: 0.75rem; margin-left: 4px; }
+  .field-source { font-size: 0.72rem; color: var(--text-dim); }
+  .field-help { font-size: 0.78rem; color: var(--text-dim); margin-top: 4px; }
+
+  .field-input-row { display: flex; gap: 8px; }
+  input[type="text"], input[type="password"] {
+    flex: 1;
+    background: #0f1218;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input::placeholder { color: #4b5060; }
+
+  button {
+    font-family: inherit;
+    font-size: 0.82rem;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+    background: #1c202b;
+    color: var(--text);
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  button:hover { background: #232837; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d12; font-weight: 600; }
+  button.primary:hover { background: #6f99ff; }
+  button.danger-ghost { color: var(--bad); background: transparent; border-color: transparent; }
+  button.danger-ghost:hover { background: rgba(242, 85, 90, 0.1); }
+
+  .card-actions { display: flex; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--panel-border); }
+
+  .test-result { margin-top: 10px; padding: 10px 12px; border-radius: 6px; font-size: 0.82rem; display: none; }
+  .test-result.show { display: block; }
+  .test-result.ok { background: rgba(62, 207, 142, 0.1); border: 1px solid rgba(62, 207, 142, 0.35); color: var(--ok); }
+  .test-result.bad { background: rgba(242, 85, 90, 0.1); border: 1px solid rgba(242, 85, 90, 0.35); color: var(--bad); }
+  .test-result .mode-tag {
+    display: inline-block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em;
+    background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 4px; margin-right: 6px;
+  }
+
+  .docs-link { font-size: 0.78rem; color: var(--accent); text-decoration: none; }
+  .docs-link:hover { text-decoration: underline; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #1c202b; border: 1px solid var(--panel-border); border-radius: 8px;
+    padding: 10px 16px; font-size: 0.85rem; opacity: 0; transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  .summary-bar {
+    display: flex; gap: 18px; font-size: 0.82rem; color: var(--text-dim); margin-top: 10px;
+  }
+  .summary-bar b { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Integrations &amp; API Keys</h1>
+  <div class="sub">Every external system this app can call, and whether it's configured. Keys are encrypted at rest and take effect immediately — no restart required.</div>
+  <div class="summary-bar" id="summary"></div>
+</header>
+
+<main id="app">
+  <div class="sub">Loading…</div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = "/api/integrations";
+
+let state = [];
+
+async function loadAll() {
+  const res = await fetch(API);
+  state = await res.json();
+  render();
+}
+
+function statusClass(item) {
+  if (item.is_fully_configured) return "ok";
+  const anySet = item.fields.some(f => f.is_set);
+  return anySet ? "partial" : "";
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function render() {
+  const app = document.getElementById("app");
+  const categories = [...new Set(state.map(i => i.category))];
+
+  const configuredCount = state.filter(i => i.is_fully_configured).length;
+  document.getElementById("summary").innerHTML =
+    `<span><b>${configuredCount}</b> / ${state.length} fully configured</span>`;
+
+  app.innerHTML = categories.map(cat => `
+    <div class="category-heading">${escapeHtml(cat)}</div>
+    ${state.filter(i => i.category === cat).map(renderCard).join("")}
+  `).join("");
+
+  state.forEach(item => {
+    const cardEl = document.getElementById(`card-${item.slug}`);
+    cardEl.querySelector(".card-head").addEventListener("click", () => {
+      cardEl.classList.toggle("open");
+    });
+    item.fields.forEach(f => {
+      const saveBtn = document.getElementById(`save-${item.slug}-${f.key}`);
+      const clearBtn = document.getElementById(`clear-${item.slug}-${f.key}`);
+      const input = document.getElementById(`input-${item.slug}-${f.key}`);
+      if (saveBtn) saveBtn.addEventListener("click", () => saveField(item.slug, f.key, input));
+      if (clearBtn) clearBtn.addEventListener("click", () => clearField(item.slug, f.key));
+      if (input) input.addEventListener("keydown", e => {
+        if (e.key === "Enter") saveField(item.slug, f.key, input);
+      });
+    });
+    const testBtn = document.getElementById(`test-${item.slug}`);
+    if (testBtn) testBtn.addEventListener("click", () => testConn(item.slug));
+  });
+}
+
+function renderCard(item) {
+  const cls = statusClass(item);
+  const fieldsHtml = item.fields.map(f => `
+    <div class="field-row">
+      <div class="field-label">
+        <label for="input-${item.slug}-${f.key}">${escapeHtml(f.label)}${f.required ? '<span class="req">*</span>' : ''}</label>
+        <span class="field-source">${f.is_set ? (f.source === 'environment' ? 'from .env' : 'saved') : 'not set'}</span>
+      </div>
+      <div class="field-input-row">
+        <input
+          type="${f.is_secret ? 'password' : 'text'}"
+          id="input-${item.slug}-${f.key}"
+          placeholder="${f.is_set ? escapeHtml(f.masked_value || '') : escapeHtml(f.placeholder || '')}"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button id="save-${item.slug}-${f.key}">Save</button>
+        ${f.is_set && f.source === 'database' ? `<button id="clear-${item.slug}-${f.key}" class="danger-ghost">Clear</button>` : ''}
+      </div>
+      ${f.help_text ? `<div class="field-help">${escapeHtml(f.help_text)}</div>` : ''}
+    </div>
+  `).join("");
+
+  return `
+    <div class="card" id="card-${item.slug}">
+      <div class="card-head" tabindex="0">
+        <div class="card-title">
+          <span class="status-dot ${cls}"></span>
+          <div>
+            <h2>${escapeHtml(item.name)}</h2>
+            <div class="desc">${escapeHtml(item.description)}</div>
+          </div>
+        </div>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="card-body">
+        ${fieldsHtml}
+        <div class="used-by">Used by: ${item.used_by.map(u => `<code>${escapeHtml(u)}</code>`).join(' ')}</div>
+        <div class="card-actions">
+          <button id="test-${item.slug}" class="primary">Test connection</button>
+          ${item.docs_url ? `<a class="docs-link" href="${escapeHtml(item.docs_url)}" target="_blank" rel="noopener">API docs ↗</a>` : ''}
+        </div>
+        <div class="test-result" id="testresult-${item.slug}"></div>
+      </div>
+    </div>
+  `;
+}
+
+async function saveField(slug, fieldKey, input) {
+  const value = input.value.trim();
+  if (!value) return;
+  const res = await fetch(`${API}/${slug}/fields/${fieldKey}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    showToast(`Error: ${err.detail || res.statusText}`);
+    return;
+  }
+  input.value = "";
+  showToast("Saved.");
+  await loadAll();
+  document.getElementById(`card-${slug}`).classList.add("open");
+}
+
+async function clearField(slug, fieldKey) {
+  if (!confirm("Clear this stored credential? This cannot be undone.")) return;
+  await fetch(`${API}/${slug}/fields/${fieldKey}`, { method: "DELETE" });
+  showToast("Cleared.");
+  await loadAll();
+  document.getElementById(`card-${slug}`).classList.add("open");
+}
+
+async function testConn(slug) {
+  const btn = document.getElementById(`test-${slug}`);
+  const resultEl = document.getElementById(`testresult-${slug}`);
+  btn.disabled = true;
+  btn.textContent = "Testing…";
+  try {
+    const res = await fetch(`${API}/${slug}/test`, { method: "POST" });
+    const data = await res.json();
+    resultEl.className = "test-result show " + (data.ok ? "ok" : "bad");
+    const modeTag = data.mode === "live" ? "Live check" : data.mode === "format_only" ? "Format check only" : "No check";
+    resultEl.innerHTML = `<span class="mode-tag">${modeTag}</span>${escapeHtml(data.message)}`;
+  } catch (e) {
+    resultEl.className = "test-result show bad";
+    resultEl.textContent = "Request failed: " + e;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Test connection";
+  }
+}
+
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2500);
+}
+
+loadAll();
+</script>
+
+</body>
+</html>

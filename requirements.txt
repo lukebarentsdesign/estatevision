@@ -1,0 +1,19 @@
+# Core
+fastapi>=0.115
+uvicorn[standard]>=0.32
+sqlmodel>=0.0.22
+pydantic>=2.9
+
+# Media / ingestion
+pdfplumber>=0.11
+opencv-python>=4.10
+numpy>=1.26
+suncalc>=0.1.3
+
+# HTTP clients for external services
+httpx>=0.27
+cryptography>=43.0
+
+# Dev
+pytest>=8.3
+reportlab>=4.2  # test fixtures only (PDF generation)
