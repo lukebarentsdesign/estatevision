@@ -232,6 +232,25 @@ def clear_integration_field(
     return _serialize_status(settings.status_for(slug), session)
 
 
+class SetActiveVendorRequest(BaseModel):
+    slug: str
+
+
+@app.put("/api/categories/{category_key}/active-vendor")
+def set_category_active_vendor(
+    category_key: str, body: SetActiveVendorRequest, session: Session = Depends(get_session)
+) -> list[dict]:
+    from .services.active_vendor import set_active_vendor
+
+    try:
+        set_active_vendor(session, category_key, body.slug)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    settings = IntegrationSettings(session)
+    return [_serialize_status(s, session) for s in settings.all_statuses()]
+
+
 @app.post("/api/integrations/{slug}/test")
 def test_integration_connection(slug: str, session: Session = Depends(get_session)) -> dict:
     try:

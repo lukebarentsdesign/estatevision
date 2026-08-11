@@ -259,3 +259,21 @@ def test_admin_page_is_served(api_client) -> None:
     resp = api_client.get("/admin/integrations")
     assert resp.status_code == 200
     assert "Integrations" in resp.text
+
+
+def test_set_active_vendor_endpoint_updates_is_active(api_client) -> None:
+    resp = api_client.put("/api/categories/avatar/active-vendor", json={"slug": "heygen"})
+    assert resp.status_code == 200
+    data = resp.json()
+    heygen = next(item for item in data if item["slug"] == "heygen")
+    assert heygen["is_active"] is True
+
+
+def test_set_active_vendor_endpoint_rejects_wrong_category(api_client) -> None:
+    resp = api_client.put("/api/categories/avatar/active-vendor", json={"slug": "elevenlabs"})
+    assert resp.status_code == 400
+
+
+def test_set_active_vendor_endpoint_rejects_unknown_category(api_client) -> None:
+    resp = api_client.put("/api/categories/not_a_real_category/active-vendor", json={"slug": "heygen"})
+    assert resp.status_code == 400
