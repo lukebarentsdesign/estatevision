@@ -119,3 +119,16 @@ class IntegrationCredential(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (UniqueConstraint("integration_slug", "field_key"),)
+
+
+class ActiveVendorChoice(SQLModel, table=True):
+    """Which registered vendor is active for a given category_key.
+
+    Absence of a row means "use the first-registered vendor in that
+    category" -- see `services.active_vendor.get_active_vendor`.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    category_key: str = Field(index=True, unique=True)
+    vendor_slug: str
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
