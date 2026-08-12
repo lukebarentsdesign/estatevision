@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from app.models import AgentProfile, Photo, PropertyJob
-from app.services.render_contract import Segment, build_segmented_render_props
+from app.services.render_contract import CaptionCue, Segment, build_segmented_render_props
 
 
 def test_build_segmented_render_props_one_segment_per_input() -> None:
@@ -77,3 +79,51 @@ def test_build_segmented_render_props_unknown_composition_raises() -> None:
 
     with pytest.raises(ValueError):
         build_segmented_render_props(composition="NotReal", job=job, agent=agent, segments=[])
+
+
+def test_build_segmented_render_props_rejects_empty_segments() -> None:
+    job = PropertyJob(id=1, address="1 Test St", postcode="TE1 1ST")
+    agent = AgentProfile(id=1, agency_name="Test Agency")
+
+    with pytest.raises(ValueError):
+        build_segmented_render_props(composition="Master16x9", job=job, agent=agent, segments=[])
+
+
+def test_build_segmented_render_props_rejects_non_positive_duration() -> None:
+    job = PropertyJob(id=1, address="1 Test St", postcode="TE1 1ST")
+    agent = AgentProfile(id=1, agency_name="Test Agency")
+
+    segments_input = [
+        Segment(
+            text="The kitchen is bright.",
+            visual_path="/photos/kitchen.jpg",
+            audio_path="/audio/segment_0.mp3",
+            duration_sec=0.0,
+            captions=(),
+            is_avatar=False,
+            disclosure_badge=None,
+        )
+    ]
+
+    with pytest.raises(ValueError):
+        build_segmented_render_props(composition="Master16x9", job=job, agent=agent, segments=segments_input)
+
+
+def test_build_segmented_render_props_rejects_caption_exceeding_segment_duration() -> None:
+    job = PropertyJob(id=1, address="1 Test St", postcode="TE1 1ST")
+    agent = AgentProfile(id=1, agency_name="Test Agency")
+
+    segments_input = [
+        Segment(
+            text="The kitchen is bright.",
+            visual_path="/photos/kitchen.jpg",
+            audio_path="/audio/segment_0.mp3",
+            duration_sec=2.0,
+            captions=(CaptionCue(text="bright", start_sec=1.5, end_sec=2.5),),  # 2.5 > 2.0
+            is_avatar=False,
+            disclosure_badge=None,
+        )
+    ]
+
+    with pytest.raises(ValueError):
+        build_segmented_render_props(composition="Master16x9", job=job, agent=agent, segments=segments_input)

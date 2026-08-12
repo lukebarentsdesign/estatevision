@@ -100,13 +100,29 @@ def build_segmented_render_props(
     """Assemble segmented render props. Mirrors `build_render_props`'s
     compliance checkpoint: every segment's text and every caption cue is
     re-checked for price here, the last point before pixels/audio are
-    produced (§1.2)."""
+    produced (§1.2). Also the last point to catch malformed segment data
+    (non-positive duration, an empty segment list, or a caption cue that
+    outlives its own segment) before it reaches Remotion, where the same
+    problem surfaces only as a silent blank/glitched render instead of a
+    clear error here.
+    """
     if composition not in ASPECTS:
         raise ValueError(f"Unknown composition {composition!r}; expected one of {sorted(ASPECTS)}")
+    if not segments:
+        raise ValueError("segments must be non-empty")
 
     for segment in segments:
+        if segment.duration_sec <= 0:
+            raise ValueError(
+                f"segment {segment.text!r} has non-positive duration_sec={segment.duration_sec!r}"
+            )
         assert_price_free(segment.text, context="a segment's narration text")
         for cue in segment.captions:
+            if cue.end_sec > segment.duration_sec:
+                raise ValueError(
+                    f"caption cue {cue.text!r} (end_sec={cue.end_sec!r}) exceeds its "
+                    f"segment's duration_sec={segment.duration_sec!r}"
+                )
             assert_price_free(cue.text, context="a segment caption cue")
     if lower_third:
         assert_price_free(lower_third, context="the lower-third")
