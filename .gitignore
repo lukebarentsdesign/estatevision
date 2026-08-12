@@ -17,3 +17,6 @@ remotion/out/
 
 .env
 secret.key
+
+# Brainstorming visual-companion sessions
+.superpowers/
