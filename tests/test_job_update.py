@@ -68,3 +68,46 @@ def test_patch_job_ignores_absent_fields(api_client) -> None:
     resp = api_client.patch(f"/api/jobs/{job_id}", json={})
     assert resp.status_code == 200
     assert resp.json()["use_avatar"] is True
+
+
+def test_patch_job_rejects_use_avatar_change_after_ingestion(api_client) -> None:
+    """Once a job has left INGESTION, its use_avatar can no longer be
+    changed -- an already-run (or in-progress) job's rendered artifacts
+    would silently desync from a later-toggled value with no way to catch
+    it downstream."""
+    import app.db as db_mod
+    from sqlmodel import Session
+
+    from app.models import JobStatus, PropertyJob
+
+    job_id = _create_job(api_client)
+
+    with Session(db_mod.engine) as session:
+        job = session.get(PropertyJob, job_id)
+        job.status = JobStatus.PROCESSING
+        session.add(job)
+        session.commit()
+
+    resp = api_client.patch(f"/api/jobs/{job_id}", json={"use_avatar": True})
+    assert resp.status_code == 409
+
+
+def test_patch_job_empty_body_allowed_regardless_of_status(api_client) -> None:
+    """An empty PATCH body (no fields to change) is a no-op and should not
+    be rejected by the status guard, since nothing is actually being
+    changed -- the guard only applies when use_avatar is genuinely provided."""
+    import app.db as db_mod
+    from sqlmodel import Session
+
+    from app.models import JobStatus, PropertyJob
+
+    job_id = _create_job(api_client)
+
+    with Session(db_mod.engine) as session:
+        job = session.get(PropertyJob, job_id)
+        job.status = JobStatus.COMPLETED
+        session.add(job)
+        session.commit()
+
+    resp = api_client.patch(f"/api/jobs/{job_id}", json={})
+    assert resp.status_code == 200

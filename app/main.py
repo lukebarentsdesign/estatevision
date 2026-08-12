@@ -85,27 +85,6 @@ def create_job(job: PropertyJob, session: Session = Depends(get_session)) -> Pro
     return job
 
 
-class UpdateJobRequest(BaseModel):
-    use_avatar: Optional[bool] = None
-
-
-@app.patch("/api/jobs/{job_id}")
-def update_job(
-    job_id: int, body: UpdateJobRequest, session: Session = Depends(get_session)
-) -> PropertyJob:
-    job = session.get(PropertyJob, job_id)
-    if job is None:
-        raise HTTPException(404, "job not found")
-
-    if body.use_avatar is not None:
-        job.use_avatar = body.use_avatar
-
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
-
-
 _MAX_UPLOAD_MB = int(os.environ.get("PROPERTY_STUDIO_MAX_UPLOAD_MB", "25"))
 _MAX_UPLOAD_BYTES = _MAX_UPLOAD_MB * 1024 * 1024
 
@@ -318,6 +297,38 @@ def refresh_location_data(
     session.add(job)
     session.commit()
     return data
+
+
+class UpdateJobRequest(BaseModel):
+    use_avatar: Optional[bool] = None
+
+
+@app.patch("/api/jobs/{job_id}")
+def update_job(
+    job_id: int, body: UpdateJobRequest, session: Session = Depends(get_session)
+) -> PropertyJob:
+    """Pre-run settings updates only. Once a job has moved past INGESTION,
+    its already-rendered (or in-progress) artifacts no longer reflect a
+    changed use_avatar value -- toggling it later would desync the DB from
+    what was actually produced, with nothing to catch it. Mirrors the
+    JobStatus-guard convention run_pipeline already uses for the same
+    reason (assert_transition)."""
+    job = session.get(PropertyJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+
+    if body.use_avatar is not None and job.status != JobStatus.INGESTION:
+        raise HTTPException(
+            409, f"cannot change use_avatar after the job has left {JobStatus.INGESTION.value} status"
+        )
+
+    if body.use_avatar is not None:
+        job.use_avatar = body.use_avatar
+
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return job
 
 
 @app.post("/api/jobs/{job_id}/run")
