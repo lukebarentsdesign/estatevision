@@ -393,6 +393,10 @@
 
       const scriptJson = job.script_json || {};
 
+      // Fire-and-forget: reopening a job that already has photos routes to
+      // renderArrangeState(), which doesn't exist until the next task lands
+      // it -- until then this rejects unhandled for that one path. Expected
+      // to self-resolve once renderArrangeState is defined.
       renderScriptCard();
 
       const shortsDiv = document.getElementById('ws-social-shorts');
