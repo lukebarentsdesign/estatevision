@@ -386,17 +386,13 @@
       document.getElementById('ws-postcode').innerText = `${job.postcode} • Orientation: ${job.garden_orientation}`;
       document.getElementById('ws-price').innerText = job.price_guide || 'No price set';
       document.getElementById('ws-feature-level').innerText = job.feature_level;
-      document.getElementById('ws-avatar-toggle').innerText = job.use_avatar ? 'HeyGen Avatar Intro Enabled' : 'ElevenLabs Voice-Only Narration';
+      renderAvatarToggle(job);
 
       const btnExport = document.getElementById('btn-export-pack');
       btnExport.href = `/api/jobs/${jobId}/export`;
 
       const scriptJson = job.script_json || {};
 
-      // Fire-and-forget: reopening a job that already has photos routes to
-      // renderArrangeState(), which doesn't exist until the next task lands
-      // it -- until then this rejects unhandled for that one path. Expected
-      // to self-resolve once renderArrangeState is defined.
       renderScriptCard();
 
       const shortsDiv = document.getElementById('ws-social-shorts');
@@ -491,6 +487,200 @@
       } catch (e) {
         status.textContent = 'Error: ' + e.message;
         status.className = 'text-xs text-rose-400';
+      }
+    }
+
+    let arrangeState = { segments: [], photos: [] };
+
+    function renderArrangeState(card, photos) {
+      arrangeState.photos = photos;
+      card.innerHTML = `
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <span>🎬 Arrange Script &amp; Photos</span>
+          </h3>
+          <span id="ws-runtime-estimate" class="text-xs text-slate-400"></span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div id="ws-segment-list" class="space-y-2"></div>
+            <button onclick="addSegment()" class="w-full mt-2 border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 text-xs font-medium py-2 rounded-xl transition">
+              + Add sentence
+            </button>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-slate-400 uppercase mb-2">Photos (drag onto a sentence)</div>
+            <div id="ws-photo-pool" class="grid grid-cols-3 gap-2"></div>
+            <button onclick="reopenUpload()" class="w-full mt-2 border border-dashed border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 text-xs font-medium py-2 rounded-xl transition">
+              + Add more photos
+            </button>
+          </div>
+        </div>
+      `;
+      loadSegments();
+    }
+
+    function reopenUpload() {
+      renderUploadState(document.getElementById('ws-script-card'));
+    }
+
+    async function loadSegments() {
+      const res = await fetch(`/api/jobs/${currentJobId}/segments`);
+      arrangeState.segments = await res.json();
+      renderSegmentList();
+      renderPhotoPool();
+      renderRuntimeEstimate();
+    }
+
+    function renderPhotoPool() {
+      const pool = document.getElementById('ws-photo-pool');
+      if (!pool) return;
+      pool.innerHTML = arrangeState.photos.map(p => `
+        <div class="aspect-square rounded-lg overflow-hidden border border-slate-800 cursor-grab bg-slate-800 flex items-center justify-center text-[9px] text-slate-500 text-center p-1"
+          draggable="true" ondragstart="onPhotoDragStart(event, ${p.id})" title="${p.source_path}">
+          Photo #${p.id}
+        </div>
+      `).join('');
+    }
+
+    function renderSegmentList() {
+      const list = document.getElementById('ws-segment-list');
+      if (!list) return;
+      list.innerHTML = arrangeState.segments.map((s, i) => `
+        <div class="bg-slate-950 border ${s.is_intro ? 'border-indigo-600' : 'border-slate-800'} rounded-xl p-3 flex gap-3 items-start"
+          draggable="true" ondragstart="onSegmentDragStart(event, ${s.id})"
+          ondragover="event.preventDefault()" ondrop="onSegmentDrop(event, ${s.id})">
+          <div class="text-[10px] text-slate-500 pt-2 w-4">${i + 1}</div>
+          <div class="flex-1">
+            ${s.is_intro ? '<div class="text-[9px] uppercase tracking-wide text-indigo-400 font-bold mb-1">Intro</div>' : ''}
+            <textarea rows="2" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+              onblur="saveSegmentText(${s.id}, this.value)">${escapeHtml(s.text)}</textarea>
+          </div>
+          <div class="w-14 h-14 rounded-lg border-2 ${s.photo_id ? 'border-solid border-slate-700' : 'border-dashed border-slate-600'} flex items-center justify-center text-[8px] text-slate-500 flex-shrink-0 text-center"
+            ondragover="event.preventDefault()" ondrop="onPhotoDropOnSegment(event, ${s.id})">
+            ${s.photo_id ? 'Photo #' + s.photo_id : 'drop photo'}
+          </div>
+          <button onclick="deleteSegment(${s.id})" class="text-slate-600 hover:text-rose-400 text-xs pt-2">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s || '';
+      return div.innerHTML;
+    }
+
+    function renderRuntimeEstimate() {
+      const el = document.getElementById('ws-runtime-estimate');
+      if (!el) return;
+      const totalWords = arrangeState.segments.reduce((sum, s) => sum + (s.text.split(/\s+/).filter(Boolean).length), 0);
+      const seconds = totalWords / 2.5; // matches backend's words-per-second heuristic
+      const mm = Math.floor(seconds / 60);
+      const ss = Math.round(seconds % 60).toString().padStart(2, '0');
+      el.textContent = `${mm}:${ss} / 2:00 cap`;
+      el.className = seconds > 120 ? 'text-xs text-amber-400 font-semibold' : 'text-xs text-slate-400';
+    }
+
+    async function addSegment() {
+      await fetch(`/api/jobs/${currentJobId}/segments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '' })
+      });
+      loadSegments();
+    }
+
+    async function deleteSegment(segmentId) {
+      await fetch(`/api/segments/${segmentId}`, { method: 'DELETE' });
+      loadSegments();
+    }
+
+    async function saveSegmentText(segmentId, text) {
+      const res = await fetch(`/api/segments/${segmentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Could not save sentence: ' + (err.detail || 'unknown error'));
+        loadSegments();
+        return;
+      }
+      loadSegments();
+    }
+
+    let draggedPhotoId = null;
+    let draggedSegmentId = null;
+
+    function onPhotoDragStart(event, photoId) {
+      draggedPhotoId = photoId;
+    }
+
+    async function onPhotoDropOnSegment(event, segmentId) {
+      event.preventDefault();
+      if (draggedPhotoId == null) return;
+      await fetch(`/api/segments/${segmentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_id: draggedPhotoId })
+      });
+      draggedPhotoId = null;
+      loadSegments();
+    }
+
+    function onSegmentDragStart(event, segmentId) {
+      draggedSegmentId = segmentId;
+    }
+
+    async function onSegmentDrop(event, targetSegmentId) {
+      event.preventDefault();
+      if (draggedSegmentId == null || draggedSegmentId === targetSegmentId) return;
+
+      const targetIndex = arrangeState.segments.findIndex(s => s.id === targetSegmentId);
+      if (targetIndex === -1) return;
+
+      await fetch(`/api/segments/${draggedSegmentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_index: targetIndex })
+      });
+      draggedSegmentId = null;
+      loadSegments();
+    }
+
+    function renderAvatarToggle(job) {
+      const el = document.getElementById('ws-avatar-toggle');
+      const editable = ['plus', 'cinematic', 'custom'].includes(job.feature_level);
+
+      if (!editable) {
+        el.innerHTML = job.use_avatar ? 'HeyGen Avatar Intro Enabled' : 'ElevenLabs Voice-Only Narration';
+        return;
+      }
+
+      el.innerHTML = `
+        <select id="ws-avatar-select" class="w-full bg-slate-950 border border-slate-800 text-sm text-slate-200 rounded-xl p-2 mt-1"
+          onchange="updateAvatarToggle(this.value === 'true')">
+          <option value="false" ${!job.use_avatar ? 'selected' : ''}>Voice-Only (ElevenLabs)</option>
+          <option value="true" ${job.use_avatar ? 'selected' : ''}>Avatar Intro (HeyGen)</option>
+        </select>
+      `;
+    }
+
+    async function updateAvatarToggle(useAvatar) {
+      const res = await fetch(`/api/jobs/${currentJobId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ use_avatar: useAvatar })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Could not update avatar setting: ' + (err.detail || 'unknown error'));
+        // Re-fetch and re-render to reflect the actual (unchanged) server state,
+        // since the <select> already shows the user's attempted (rejected) choice.
+        const jobRes = await fetch(`/api/jobs/${currentJobId}`);
+        renderAvatarToggle(await jobRes.json());
       }
     }
 
