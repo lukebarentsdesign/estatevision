@@ -20,3 +20,6 @@ secret.key
 
 # Brainstorming visual-companion sessions
 .superpowers/
+
+# Git worktrees for isolated feature work
+.worktrees/
