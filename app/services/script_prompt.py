@@ -22,10 +22,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 class ScriptVariant(str, Enum):
-    WALKTHROUGH = "walkthrough"       # 60s master narration (legacy, unused by the segmented flow)
+    WALKTHROUGH = "walkthrough"       # 60s master narration (predates the segmented flow)
     SEGMENTED_WALKTHROUGH = "segmented_walkthrough"  # 5-10 discrete sentence-elements as JSON
     SHORT = "short"                   # 15-30s social cut
-    AVATAR_OPENING = "avatar_opening" # HeyGen opening line only (legacy, unused by the segmented flow)
+    AVATAR_OPENING = "avatar_opening" # HeyGen opening line only (predates the segmented flow)
     CAPTION = "caption"               # kinetic captions / lower-thirds
 
 
@@ -158,7 +158,8 @@ _VARIANT_BRIEF: dict[ScriptVariant, str] = {
         "Return ONLY a JSON array, no other text, in this exact shape:\n"
         '[{"text": "...", "is_intro": true}, {"text": "...", "is_intro": false}, ...]\n'
         "The first array item must have \"is_intro\": true; every other item "
-        "must have \"is_intro\": false."
+        "must have \"is_intro\": false. Do not wrap the array in markdown code "
+        "fences or add any commentary before or after it."
     ),
     ScriptVariant.SHORT: (
         "Write a punchy social voiceover of 15-30 seconds (about 45 words) "
