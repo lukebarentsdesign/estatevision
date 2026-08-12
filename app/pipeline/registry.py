@@ -73,6 +73,18 @@ def build_job_snapshot(session: Session, job: PropertyJob) -> dict[str, Any]:
 
     if job.use_avatar:
         agent_snapshot["heygen_avatar_id"] = consent.require_avatar(agent)
+        # Sentence-photo linking's segmented flow (app.pipeline.steps.script_
+        # and_voice.ScriptAndVoiceStep._run_segmented) needs an ElevenLabs
+        # voice even for avatar jobs: only the intro segment's audio comes
+        # from HeyGen, every other segment is still voiced by ElevenLabs.
+        # Populate it opportunistically -- an agent with `ScriptSegment` rows
+        # but no consented voice yet will simply have this key absent, and
+        # ScriptAndVoiceStep's own RuntimeError guard catches that case if
+        # there are non-intro segments to voice; jobs with no ScriptSegment
+        # rows at all (the legacy path) never read this key, so making it
+        # optional here doesn't change legacy behavior.
+        if agent.elevenlabs_voice_id and agent.voice_consent_confirmed:
+            agent_snapshot["elevenlabs_voice_id"] = agent.elevenlabs_voice_id
     else:
         agent_snapshot["elevenlabs_voice_id"] = consent.require_voice_for_narration(agent)
 

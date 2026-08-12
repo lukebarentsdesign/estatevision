@@ -146,17 +146,20 @@ class ScriptAndVoiceStep(PipelineStep):
         for s in segments_to_voice:
             assert_price_free(s.text, context=f"segment {s.id}")
 
-        # `job_snapshot["agent"]["elevenlabs_voice_id"]` is populated only after
+        # Unlike the legacy path, avatar-on jobs here still need an
+        # ElevenLabs voice: only the intro segment's audio comes from
+        # HeyGen -- every other segment (in `segments_to_voice`) is always
+        # voiced by ElevenLabs, avatar or not. `job_snapshot["agent"]
+        # ["elevenlabs_voice_id"]` is populated only after
         # `services.consent.require_voice_for_narration` has passed -- see
         # `app.pipeline.registry.build_job_snapshot`. This step trusts that
-        # gate rather than re-checking it, so it never needs the ORM (same
-        # pattern as the legacy path above).
-        voice_id = None if use_avatar else agent.get("elevenlabs_voice_id")
-        if not use_avatar and not voice_id:
+        # gate rather than re-checking it, so it never needs the ORM.
+        voice_id = agent.get("elevenlabs_voice_id") if segments_to_voice else None
+        if segments_to_voice and not voice_id:
             raise RuntimeError(
                 "job_snapshot has no consented elevenlabs_voice_id for a "
-                "voice-only job; this should have been caught before the "
-                "pipeline started."
+                "job with segments to voice; this should have been caught "
+                "before the pipeline started."
             )
 
         segment_audio_paths: dict[int, str] = {}

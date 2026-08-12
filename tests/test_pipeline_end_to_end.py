@@ -321,6 +321,125 @@ def test_script_and_voice_uses_segments_when_present(db_session, monkeypatch, tm
     assert len(result.artifacts["segment_audio_paths"]) == 2
 
 
+def _wire_segmented_test_doubles(monkeypatch, db_session) -> None:
+    """Shared setup for segmented-path tests: fake TTS client that writes
+    real (silent) WAV audio instead of StubElevenLabsClient's text
+    placeholder (pydub can't decode that), and points app.db.engine at
+    db_session's engine so ScriptAndVoiceStep's own `Session(engine)` sees
+    the ScriptSegment rows this test creates -- see the comment in
+    test_script_and_voice_uses_segments_when_present for why this is needed."""
+    import wave
+
+    from app.pipeline.steps import script_and_voice as script_and_voice_mod
+
+    def _write_silent_wav(path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x00\x00" * 16000)
+        return path
+
+    class _FakeTtsClient:
+        def synthesize(self, *, voice_id: str, text: str, output_path: Path) -> Path:
+            return _write_silent_wav(output_path)
+
+    monkeypatch.setattr(script_and_voice_mod, "get_active_tts_client", lambda **kw: _FakeTtsClient())
+
+    import app.db as db_mod
+
+    monkeypatch.setattr(db_mod, "engine", db_session.get_bind())
+
+
+def test_script_and_voice_avatar_on_excludes_intro_from_voicing(db_session, monkeypatch, tmp_path) -> None:
+    """With avatar on, the intro segment's audio comes from HeyGen elsewhere
+    (AvatarIntroStep), so ScriptAndVoiceStep must exclude it from the
+    continuous ElevenLabs take -- only the non-intro segment gets voiced."""
+    from app.models import AgentProfile, PropertyJob, ScriptSegment
+    from app.pipeline.contract import JobContext
+    from app.pipeline.steps.script_and_voice import ScriptAndVoiceStep
+
+    _wire_segmented_test_doubles(monkeypatch, db_session)
+
+    # Avatar-on jobs still need a consented ElevenLabs voice for any
+    # non-intro segments -- only the intro's audio comes from HeyGen.
+    agent = AgentProfile(agency_name="Thornes", staff_name="Luke", heygen_avatar_id="avatar_verified_123")
+    consent.set_elevenlabs_voice(agent, "voice_abc", consent_confirmed=True)
+    db_session.add(agent)
+    db_session.commit()
+    db_session.refresh(agent)
+
+    job = PropertyJob(agent_id=agent.id, address="1 Test St", postcode="TE1 1ST", use_avatar=True)
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    db_session.add(ScriptSegment(job_id=job.id, order_index=0, text="Hi there.", is_intro=True))
+    db_session.add(ScriptSegment(job_id=job.id, order_index=1, text="The kitchen is bright."))
+    db_session.commit()
+
+    snapshot = build_job_snapshot(db_session, job)
+    ctx = JobContext(
+        job_id=job.id,
+        work_dir=tmp_path / "work",
+        feature_level=job.feature_level,
+        use_avatar=job.use_avatar,
+        job_snapshot=snapshot,
+    )
+
+    step = ScriptAndVoiceStep()
+    result = step.run(ctx)
+
+    assert result.status is StepStatus.DONE
+    assert result.artifacts["intro_via_avatar"] is True
+    # Only the non-intro segment was voiced -- exactly 1 entry, not 2.
+    assert len(result.artifacts["segment_audio_paths"]) == 1
+
+
+def test_script_and_voice_avatar_on_with_only_intro_segment_voices_nothing(
+    db_session, monkeypatch, tmp_path
+) -> None:
+    """With avatar on and the intro as the ONLY segment, segments_to_voice is
+    empty -- ScriptAndVoiceStep must not call synthesize_and_slice_segments
+    with an empty list (which raises ValueError), and should return an empty
+    segment_audio_paths rather than erroring."""
+    from app.models import AgentProfile, PropertyJob, ScriptSegment
+    from app.pipeline.contract import JobContext
+    from app.pipeline.steps.script_and_voice import ScriptAndVoiceStep
+
+    _wire_segmented_test_doubles(monkeypatch, db_session)
+
+    agent = AgentProfile(agency_name="Thornes", staff_name="Luke", heygen_avatar_id="avatar_verified_123")
+    db_session.add(agent)
+    db_session.commit()
+    db_session.refresh(agent)
+
+    job = PropertyJob(agent_id=agent.id, address="1 Test St", postcode="TE1 1ST", use_avatar=True)
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    db_session.add(ScriptSegment(job_id=job.id, order_index=0, text="Hi there.", is_intro=True))
+    db_session.commit()
+
+    snapshot = build_job_snapshot(db_session, job)
+    ctx = JobContext(
+        job_id=job.id,
+        work_dir=tmp_path / "work",
+        feature_level=job.feature_level,
+        use_avatar=job.use_avatar,
+        job_snapshot=snapshot,
+    )
+
+    step = ScriptAndVoiceStep()
+    result = step.run(ctx)
+
+    assert result.status is StepStatus.DONE
+    assert result.artifacts["intro_via_avatar"] is True
+    assert result.artifacts["segment_audio_paths"] == {}
+
+
 def test_resume_does_not_rerun_completed_steps(db_session, brochure_pdf, sample_photo, tmp_path):
     job, agent = _make_job(
         db_session, brochure_pdf=brochure_pdf, photo=sample_photo, feature_level=FeatureLevel.STANDARD
