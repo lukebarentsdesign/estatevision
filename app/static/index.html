@@ -537,7 +537,7 @@
       if (!pool) return;
       pool.innerHTML = arrangeState.photos.map(p => `
         <div class="aspect-square rounded-lg overflow-hidden border border-slate-800 cursor-grab bg-slate-800 flex items-center justify-center text-[9px] text-slate-500 text-center p-1"
-          draggable="true" ondragstart="onPhotoDragStart(event, ${p.id})" title="${p.source_path}">
+          draggable="true" ondragstart="onPhotoDragStart(event, ${p.id})" title="${escapeHtml(p.source_path)}">
           Photo #${p.id}
         </div>
       `).join('');
@@ -546,17 +546,27 @@
     function renderSegmentList() {
       const list = document.getElementById('ws-segment-list');
       if (!list) return;
+
+      if (arrangeState.segments.length === 0) {
+        list.innerHTML = '<div class="text-xs text-slate-500 italic py-2">No sentences yet — add one below.</div>';
+        return;
+      }
+
+      // Segment reordering via drag is deliberately not wired up: the
+      // backend has no order_index uniqueness constraint, and a naive
+      // "PUT the target row's current index" reorder can produce duplicate
+      // order_index values across segments with no renumbering -- leaving
+      // ordering ambiguous on reload. Reorder is out of scope for this
+      // release; only photo-onto-segment dragging is enabled below.
       list.innerHTML = arrangeState.segments.map((s, i) => `
-        <div class="bg-slate-950 border ${s.is_intro ? 'border-indigo-600' : 'border-slate-800'} rounded-xl p-3 flex gap-3 items-start"
-          draggable="true" ondragstart="onSegmentDragStart(event, ${s.id})"
-          ondragover="event.preventDefault()" ondrop="onSegmentDrop(event, ${s.id})">
+        <div id="ws-segment-row-${s.id}" class="bg-slate-950 border ${s.is_intro ? 'border-indigo-600' : 'border-slate-800'} rounded-xl p-3 flex gap-3 items-start">
           <div class="text-[10px] text-slate-500 pt-2 w-4">${i + 1}</div>
           <div class="flex-1">
             ${s.is_intro ? '<div class="text-[9px] uppercase tracking-wide text-indigo-400 font-bold mb-1">Intro</div>' : ''}
             <textarea rows="2" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
               onblur="saveSegmentText(${s.id}, this.value)">${escapeHtml(s.text)}</textarea>
           </div>
-          <div class="w-14 h-14 rounded-lg border-2 ${s.photo_id ? 'border-solid border-slate-700' : 'border-dashed border-slate-600'} flex items-center justify-center text-[8px] text-slate-500 flex-shrink-0 text-center"
+          <div id="ws-segment-photo-${s.id}" class="w-14 h-14 rounded-lg border-2 ${s.photo_id ? 'border-solid border-slate-700' : 'border-dashed border-slate-600'} flex items-center justify-center text-[8px] text-slate-500 flex-shrink-0 text-center"
             ondragover="event.preventDefault()" ondrop="onPhotoDropOnSegment(event, ${s.id})">
             ${s.photo_id ? 'Photo #' + s.photo_id : 'drop photo'}
           </div>
@@ -612,7 +622,6 @@
     }
 
     let draggedPhotoId = null;
-    let draggedSegmentId = null;
 
     function onPhotoDragStart(event, photoId) {
       draggedPhotoId = photoId;
@@ -621,33 +630,30 @@
     async function onPhotoDropOnSegment(event, segmentId) {
       event.preventDefault();
       if (draggedPhotoId == null) return;
-      await fetch(`/api/segments/${segmentId}`, {
+      const res = await fetch(`/api/segments/${segmentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ photo_id: draggedPhotoId })
       });
       draggedPhotoId = null;
-      loadSegments();
-    }
-
-    function onSegmentDragStart(event, segmentId) {
-      draggedSegmentId = segmentId;
-    }
-
-    async function onSegmentDrop(event, targetSegmentId) {
-      event.preventDefault();
-      if (draggedSegmentId == null || draggedSegmentId === targetSegmentId) return;
-
-      const targetIndex = arrangeState.segments.findIndex(s => s.id === targetSegmentId);
-      if (targetIndex === -1) return;
-
-      await fetch(`/api/segments/${draggedSegmentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_index: targetIndex })
-      });
-      draggedSegmentId = null;
-      loadSegments();
+      if (!res.ok) {
+        loadSegments(); // fall back to a full reload to reflect real server state on failure
+        return;
+      }
+      const updated = await res.json();
+      // Update only this segment's local state + drop-zone rather than
+      // calling loadSegments() (which re-renders the entire list from
+      // scratch): a full re-render would destroy every other segment's
+      // textarea DOM node, silently discarding any in-progress typing in
+      // them without triggering their blur-save.
+      const idx = arrangeState.segments.findIndex(s => s.id === segmentId);
+      if (idx !== -1) arrangeState.segments[idx] = updated;
+      const zone = document.getElementById(`ws-segment-photo-${segmentId}`);
+      if (zone) {
+        zone.textContent = 'Photo #' + updated.photo_id;
+        zone.classList.remove('border-dashed', 'border-slate-600');
+        zone.classList.add('border-solid', 'border-slate-700');
+      }
     }
 
     function renderAvatarToggle(job) {
