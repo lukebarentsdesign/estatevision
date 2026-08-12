@@ -35,8 +35,20 @@ ALL_STEPS: tuple[type[PipelineStep], ...] = (
     RestorationPassStep,
     MotionPassStep,
     ScriptAndVoiceStep,
-    RemotionAssemblyStep,
+    # AvatarIntroStep must be declared (and therefore topologically sorted)
+    # before RemotionAssemblyStep: for a segmented avatar-on job,
+    # RemotionAssemblyStep reads ctx.artifacts["avatar_intro"]["avatar_clip_path"]
+    # (see ScriptAndVoiceStep._run_segmented / RemotionAssemblyStep._run_segmented).
+    # There is deliberately no `requires` edge for this -- AvatarIntroStep only
+    # applies to avatar jobs, and adding "avatar_intro" to RemotionAssemblyStep's
+    # `requires` would make it hard-skip every non-avatar job (whose
+    # ctx.artifacts never gets an "avatar_intro" key, since that step's
+    # `applies_to` is false and it never runs at all). Declaration order in
+    # this tuple is what `_toposort` (contract.py) uses to break ties between
+    # steps with no dependency relationship, so this ordering alone is
+    # sufficient and correct.
     AvatarIntroStep,
+    RemotionAssemblyStep,
     CaptionTimingStep,
     SkyReplacementStep,
     MusicDuckingStep,

@@ -499,6 +499,27 @@ def test_avatar_intro_step_resolves_segmented_intro_text(db_session, monkeypatch
     assert calls == ["Hi, I'm Luke."]
 
 
+def test_avatar_intro_runs_before_remotion_assembly_in_real_pipeline_order() -> None:
+    """Regression test for a real ordering bug: RemotionAssemblyStep's
+    segmented path reads ctx.artifacts["avatar_intro"]["avatar_clip_path"],
+    but ALL_STEPS previously declared RemotionAssemblyStep before
+    AvatarIntroStep, so _toposort (which breaks ties on declaration order)
+    ran remotion_assembly first -- avatar_clip_path was always missing,
+    silently producing an empty-visual avatar segment in every rendered
+    video for segmented, avatar-on jobs. Confirms the real production
+    step order (from build_runner(), not a hand-picked subset) has
+    avatar_intro before remotion_assembly."""
+    from app.pipeline.registry import build_runner
+
+    runner = build_runner()
+    step_names = [s.name for s in runner.steps]
+
+    assert step_names.index("avatar_intro") < step_names.index("remotion_assembly"), (
+        "avatar_intro must run before remotion_assembly so avatar_clip_path "
+        "is available when the segmented render path builds the intro segment"
+    )
+
+
 def test_resume_does_not_rerun_completed_steps(db_session, brochure_pdf, sample_photo, tmp_path):
     job, agent = _make_job(
         db_session, brochure_pdf=brochure_pdf, photo=sample_photo, feature_level=FeatureLevel.STANDARD

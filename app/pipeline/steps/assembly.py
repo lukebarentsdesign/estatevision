@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ...models import AgentProfile, FeatureLevel, Photo
 from ...services.compliance import AI_DISCLOSURE_BADGE_TEXT
-from ...services.render_contract import CaptionCue, Segment, build_render_props, build_segmented_render_props
+from ...services.render_contract import Segment, build_render_props, build_segmented_render_props
 from ..contract import JobContext, PipelineStep, StepResult, StepStatus
 
 REMOTION_DIR = Path(__file__).resolve().parents[3] / "remotion"
