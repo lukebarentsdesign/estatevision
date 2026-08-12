@@ -104,6 +104,32 @@ class Photo(SQLModel, table=True):
     job: Optional[PropertyJob] = Relationship(back_populates="photos")
 
 
+class ScriptSegment(SQLModel, table=True):
+    """One sentence of narration, paired with the one photo that illustrates
+    it and the one audio clip that voices it (spec: sentence-photo linking
+    design, 2026-08-12).
+
+    `photo_id` and `audio_path` start null and are filled in during the
+    arrange step / generate step respectively. A `Photo` may be referenced by
+    more than one `ScriptSegment` -- reuse across sentences is allowed by
+    design, so there is no uniqueness constraint on `photo_id`.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_id: int = Field(foreign_key="propertyjob.id")
+
+    order_index: int = 0
+    text: str
+    is_intro: bool = False
+
+    photo_id: Optional[int] = Field(default=None, foreign_key="photo.id")
+    audio_path: Optional[str] = None
+    duration_sec: Optional[float] = None
+
+    job: Optional[PropertyJob] = Relationship()
+    photo: Optional[Photo] = Relationship()
+
+
 class IntegrationCredential(SQLModel, table=True):
     """One field's stored value for one integration (see `services.integration_registry`).
 
