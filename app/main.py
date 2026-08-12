@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
-from .models import AgentProfile, JobStatus, Photo, PropertyJob
+from .models import AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment
 from .pipeline.contract import JobContext, assert_transition
 from .pipeline.registry import build_job_snapshot, build_runner
 from .services import uk_location
@@ -179,6 +179,108 @@ def list_job_photos(job_id: int, session: Session = Depends(get_session)) -> lis
     return session.exec(
         select(Photo).where(Photo.job_id == job_id).order_by(Photo.order_index)
     ).all()
+
+
+class CreateSegmentRequest(BaseModel):
+    text: str
+    order_index: Optional[int] = None
+
+
+class UpdateSegmentRequest(BaseModel):
+    text: Optional[str] = None
+    photo_id: Optional[int] = None
+    order_index: Optional[int] = None
+
+
+def _serialize_segment(segment: ScriptSegment) -> dict:
+    return {
+        "id": segment.id,
+        "job_id": segment.job_id,
+        "order_index": segment.order_index,
+        "text": segment.text,
+        "is_intro": segment.is_intro,
+        "photo_id": segment.photo_id,
+        "audio_path": segment.audio_path,
+        "duration_sec": segment.duration_sec,
+    }
+
+
+@app.get("/api/jobs/{job_id}/segments")
+def list_job_segments(job_id: int, session: Session = Depends(get_session)) -> list[dict]:
+    from .services.script_segments import list_segments
+
+    job = session.get(PropertyJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    return [_serialize_segment(s) for s in list_segments(session, job_id)]
+
+
+@app.post("/api/jobs/{job_id}/segments", status_code=201)
+def create_job_segment(
+    job_id: int, body: CreateSegmentRequest, session: Session = Depends(get_session)
+) -> dict:
+    from .services.compliance import assert_price_free
+    from .services.script_segments import list_segments
+
+    job = session.get(PropertyJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+
+    try:
+        assert_price_free(body.text, context="agent-authored segment")
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    order_index = body.order_index
+    if order_index is None:
+        existing = list_segments(session, job_id)
+        order_index = (max((s.order_index for s in existing), default=-1)) + 1
+
+    segment = ScriptSegment(job_id=job_id, order_index=order_index, text=body.text, is_intro=False)
+    session.add(segment)
+    session.commit()
+    session.refresh(segment)
+    return _serialize_segment(segment)
+
+
+@app.put("/api/segments/{segment_id}")
+def update_job_segment(
+    segment_id: int, body: UpdateSegmentRequest, session: Session = Depends(get_session)
+) -> dict:
+    from .services.compliance import assert_price_free
+
+    segment = session.get(ScriptSegment, segment_id)
+    if segment is None:
+        raise HTTPException(404, "segment not found")
+
+    if body.text is not None:
+        try:
+            assert_price_free(body.text, context="edited segment")
+        except Exception as exc:
+            raise HTTPException(400, str(exc)) from exc
+        segment.text = body.text
+    if body.photo_id is not None:
+        photo = session.get(Photo, body.photo_id)
+        if photo is None or photo.job_id != segment.job_id:
+            raise HTTPException(400, f"photo {body.photo_id} does not belong to this job")
+        segment.photo_id = body.photo_id
+    if body.order_index is not None:
+        segment.order_index = body.order_index
+
+    session.add(segment)
+    session.commit()
+    session.refresh(segment)
+    return _serialize_segment(segment)
+
+
+@app.delete("/api/segments/{segment_id}")
+def delete_job_segment(segment_id: int, session: Session = Depends(get_session)) -> dict:
+    segment = session.get(ScriptSegment, segment_id)
+    if segment is None:
+        raise HTTPException(404, "segment not found")
+    session.delete(segment)
+    session.commit()
+    return {"deleted": True}
 
 
 @app.post("/api/jobs/{job_id}/location")
