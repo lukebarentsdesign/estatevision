@@ -23,9 +23,11 @@ from .models import AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment
 from .pipeline.contract import JobContext, assert_transition
 from .pipeline.registry import build_job_snapshot, build_runner
 from .services import uk_location
+from .services.compliance import assert_price_free
 from .services.integration_registry import list_integrations
 from .services.integration_settings import IntegrationSettings
 from .services.integration_test_connection import test_connection
+from .services.script_segments import list_segments
 
 
 @asynccontextmanager
@@ -207,8 +209,6 @@ def _serialize_segment(segment: ScriptSegment) -> dict:
 
 @app.get("/api/jobs/{job_id}/segments")
 def list_job_segments(job_id: int, session: Session = Depends(get_session)) -> list[dict]:
-    from .services.script_segments import list_segments
-
     job = session.get(PropertyJob, job_id)
     if job is None:
         raise HTTPException(404, "job not found")
@@ -219,9 +219,6 @@ def list_job_segments(job_id: int, session: Session = Depends(get_session)) -> l
 def create_job_segment(
     job_id: int, body: CreateSegmentRequest, session: Session = Depends(get_session)
 ) -> dict:
-    from .services.compliance import assert_price_free
-    from .services.script_segments import list_segments
-
     job = session.get(PropertyJob, job_id)
     if job is None:
         raise HTTPException(404, "job not found")
@@ -247,8 +244,6 @@ def create_job_segment(
 def update_job_segment(
     segment_id: int, body: UpdateSegmentRequest, session: Session = Depends(get_session)
 ) -> dict:
-    from .services.compliance import assert_price_free
-
     segment = session.get(ScriptSegment, segment_id)
     if segment is None:
         raise HTTPException(404, "segment not found")
