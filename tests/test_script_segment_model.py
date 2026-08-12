@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import AgentProfile, Photo, PropertyJob, ScriptSegment
 
@@ -69,6 +69,6 @@ def test_same_photo_can_back_two_segments(session) -> None:
     session.commit()
 
     stmt_count = session.exec(
-        __import__("sqlmodel").select(ScriptSegment).where(ScriptSegment.photo_id == photo.id)
+        select(ScriptSegment).where(ScriptSegment.photo_id == photo.id)
     ).all()
     assert len(stmt_count) == 2
