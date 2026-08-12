@@ -711,17 +711,6 @@
       }
     }
 
-    async function saveScript() {
-      if (!currentJobId) return;
-      const text = document.getElementById('ws-script-text').value;
-      await fetch(`/api/jobs/${currentJobId}/script`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walkthrough_script: text })
-      });
-      alert('Script changes saved.');
-    }
-
     async function fetchLocationData() {
       if (!currentJobId) return;
       const res = await fetch(`/api/jobs/${currentJobId}/location`, { method: 'POST' });
