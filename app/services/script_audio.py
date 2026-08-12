@@ -13,11 +13,14 @@ and the file is sliced at those boundaries into one clip per segment.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Callable, Protocol
 
 from ..clients.audio_slicing import AudioBoundary, slice_audio_file
 from ..clients.local_tools import WordTimestamp
+
+log = logging.getLogger(__name__)
 
 
 class _SynthesizesSpeech(Protocol):
@@ -33,17 +36,31 @@ def _find_segment_boundaries(
 
     This is forced alignment, not inference: the segment texts and their
     word counts are already known, so this only needs to consume that many
-    words off the front of the timing stream for each segment in turn.
+    words off the front of the timing stream for each segment in turn. This
+    assumes WhisperX's word tokenization lines up 1:1 with Python's
+    `str.split()` on the original segment text -- against real audio,
+    contractions, punctuation, and hyphenation can make WhisperX emit a
+    different word count than `.split()` did, which would silently drift
+    every subsequent segment's boundary. Only the "WhisperX produced fewer
+    words than expected" case is handled defensively below; a tokenization
+    mismatch that doesn't trigger that branch is not otherwise detected.
     """
     boundaries: list[AudioBoundary] = []
     cursor = 0
-    for text in segments_text:
+    for i, text in enumerate(segments_text):
         word_count = len(text.split())
         segment_words = words[cursor : cursor + word_count]
         if not segment_words:
             # WhisperX produced fewer aligned words than expected (e.g. it
             # dropped a word it couldn't align) -- fall back to the last
             # known timestamp so slicing doesn't crash on a short transcript.
+            # This produces a zero-duration (silent) clip for this segment,
+            # so it's logged rather than swallowed silently.
+            log.warning(
+                "segment %d (%r) got no aligned words from WhisperX; "
+                "producing a zero-duration audio clip for it",
+                i, text,
+            )
             start = boundaries[-1].end_sec if boundaries else 0.0
             end = start
         else:
