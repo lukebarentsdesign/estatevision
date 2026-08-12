@@ -22,9 +22,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 class ScriptVariant(str, Enum):
-    WALKTHROUGH = "walkthrough"       # 60s master narration
+    WALKTHROUGH = "walkthrough"       # 60s master narration (legacy, unused by the segmented flow)
+    SEGMENTED_WALKTHROUGH = "segmented_walkthrough"  # 5-10 discrete sentence-elements as JSON
     SHORT = "short"                   # 15-30s social cut
-    AVATAR_OPENING = "avatar_opening" # HeyGen opening line only
+    AVATAR_OPENING = "avatar_opening" # HeyGen opening line only (legacy, unused by the segmented flow)
     CAPTION = "caption"               # kinetic captions / lower-thirds
 
 
@@ -143,6 +144,21 @@ _VARIANT_BRIEF: dict[ScriptVariant, str] = {
     ScriptVariant.WALKTHROUGH: (
         "Write a single continuous voiceover of roughly 60 seconds "
         "(about 150 words) that walks the viewer through the property."
+    ),
+    ScriptVariant.SEGMENTED_WALKTHROUGH: (
+        "Split the property tour into 5 to 10 short sentence-elements, each "
+        "covering exactly one room, feature, or aspect of the property "
+        "(e.g. kitchen, living room, garden). The FIRST sentence must always "
+        "be a short spoken introduction (max 25 words) welcoming the viewer "
+        "and naming the property address, e.g. \"Hi, I'm James, I'd love to "
+        "show you around 5 Wardington Crescent.\" Every sentence after the "
+        "first should be one short, natural spoken line (roughly 10-25 words) "
+        "about a single room or feature. Aim for a total spoken length of "
+        "around two minutes across all sentences combined.\n\n"
+        "Return ONLY a JSON array, no other text, in this exact shape:\n"
+        '[{"text": "...", "is_intro": true}, {"text": "...", "is_intro": false}, ...]\n'
+        "The first array item must have \"is_intro\": true; every other item "
+        "must have \"is_intro\": false."
     ),
     ScriptVariant.SHORT: (
         "Write a punchy social voiceover of 15-30 seconds (about 45 words) "
