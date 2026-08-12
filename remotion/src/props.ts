@@ -63,3 +63,43 @@ export const defaultRenderProps: RenderProps = {
   avatar_clip_path: null,
   lower_third: null,
 };
+
+export type Segment = {
+  text: string;
+  visual_path: string;
+  audio_path: string | null;
+  duration_sec: number;
+  captions: CaptionCue[];
+  is_avatar: boolean;
+  disclosure_badge: string | null;
+};
+
+export type SegmentedRenderProps = {
+  composition: string;
+  width: number;
+  height: number;
+  fps: number;
+  branding: Branding;
+  segments: Segment[];
+  music_path: string | null;
+  music_duck_db: number;
+  lower_third: string | null;
+};
+
+export const defaultSegmentedRenderProps: SegmentedRenderProps = {
+  composition: "Master16x9",
+  width: 3840,
+  height: 2160,
+  fps: 30,
+  branding: {
+    agency_name: "",
+    primary_color: "#111827",
+    secondary_color: "#6b7280",
+    logo_path: null,
+    staff_name: null,
+  },
+  segments: [],
+  music_path: null,
+  music_duck_db: -14.0,
+  lower_third: null,
+};

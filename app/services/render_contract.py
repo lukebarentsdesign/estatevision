@@ -48,6 +48,89 @@ class Clip:
 
 
 @dataclass(frozen=True)
+class Segment:
+    """One self-contained (visual, audio, captions, duration) unit in a
+    segmented timeline. Unlike the legacy `Clip`, a `Segment` carries its own
+    audio and duration rather than sharing one global voiceover track --
+    this is what structurally guarantees a photo is on screen for exactly as
+    long as its matching sentence is spoken (spec: sentence-photo linking
+    design, 2026-08-12, §5).
+    """
+
+    text: str
+    visual_path: str          # a photo's clip_path, or an avatar clip's path when is_avatar
+    audio_path: str | None    # None only when is_avatar (avatar clip carries its own audio)
+    duration_sec: float
+    captions: tuple[CaptionCue, ...]
+    is_avatar: bool
+    disclosure_badge: str | None
+
+
+@dataclass(frozen=True)
+class SegmentedRenderProps:
+    """The segmented-timeline counterpart to `RenderProps`, used for jobs
+    with `ScriptSegment` rows. Structurally distinct from `RenderProps`
+    (rather than an optional field bolted onto it) so a caller cannot
+    accidentally mix a shared `voiceover_path` with per-segment audio."""
+
+    composition: str
+    width: int
+    height: int
+    fps: int
+    branding: Branding
+    segments: tuple[Segment, ...]
+    music_path: str | None = None
+    music_duck_db: float = -14.0
+    lower_third: str | None = None
+
+    def to_props(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def build_segmented_render_props(
+    *,
+    composition: str,
+    job: PropertyJob,
+    agent: AgentProfile,
+    segments: list[Segment],
+    music_path: str | None = None,
+    lower_third: str | None = None,
+    fps: int = 30,
+) -> SegmentedRenderProps:
+    """Assemble segmented render props. Mirrors `build_render_props`'s
+    compliance checkpoint: every segment's text and every caption cue is
+    re-checked for price here, the last point before pixels/audio are
+    produced (§1.2)."""
+    if composition not in ASPECTS:
+        raise ValueError(f"Unknown composition {composition!r}; expected one of {sorted(ASPECTS)}")
+
+    for segment in segments:
+        assert_price_free(segment.text, context="a segment's narration text")
+        for cue in segment.captions:
+            assert_price_free(cue.text, context="a segment caption cue")
+    if lower_third:
+        assert_price_free(lower_third, context="the lower-third")
+
+    width, height = ASPECTS[composition]
+    return SegmentedRenderProps(
+        composition=composition,
+        width=width,
+        height=height,
+        fps=fps,
+        branding=Branding(
+            agency_name=agent.agency_name,
+            primary_color=agent.primary_color,
+            secondary_color=agent.secondary_color,
+            logo_path=agent.logo_path,
+            staff_name=agent.staff_name,
+        ),
+        segments=tuple(segments),
+        music_path=music_path,
+        lower_third=lower_third,
+    )
+
+
+@dataclass(frozen=True)
 class RenderProps:
     """The complete prop payload handed to a Remotion composition."""
 
