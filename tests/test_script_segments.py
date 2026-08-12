@@ -102,6 +102,35 @@ def test_create_and_list_segments_via_api(api_client) -> None:
     assert len(list_resp.json()) == 1
 
 
+def test_create_segment_order_index_continues_from_existing(api_client) -> None:
+    job_id = _create_job_via_api(api_client)
+    first = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The hallway."})
+    second = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The kitchen."})
+
+    assert first.json()["order_index"] == 0
+    assert second.json()["order_index"] == 1
+
+
+def test_list_segments_unknown_job_returns_404(api_client) -> None:
+    resp = api_client.get("/api/jobs/999999/segments")
+    assert resp.status_code == 404
+
+
+def test_create_segment_unknown_job_returns_404(api_client) -> None:
+    resp = api_client.post("/api/jobs/999999/segments", json={"text": "A room."})
+    assert resp.status_code == 404
+
+
+def test_update_unknown_segment_returns_404(api_client) -> None:
+    resp = api_client.put("/api/segments/999999", json={"text": "New text."})
+    assert resp.status_code == 404
+
+
+def test_delete_unknown_segment_returns_404(api_client) -> None:
+    resp = api_client.delete("/api/segments/999999")
+    assert resp.status_code == 404
+
+
 def test_create_segment_rejects_price_text(api_client) -> None:
     job_id = _create_job_via_api(api_client)
     resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "Offers over £300,000."})
