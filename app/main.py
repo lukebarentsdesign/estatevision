@@ -7,17 +7,19 @@ badge logic -- lives in this file. See §9 for why that split matters.
 
 from __future__ import annotations
 
+import os
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
-from .models import AgentProfile, JobStatus, PropertyJob
+from .models import AgentProfile, JobStatus, Photo, PropertyJob
 from .pipeline.contract import JobContext, assert_transition
 from .pipeline.registry import build_job_snapshot, build_runner
 from .services import uk_location
@@ -79,6 +81,79 @@ def create_job(job: PropertyJob, session: Session = Depends(get_session)) -> Pro
     session.commit()
     session.refresh(job)
     return job
+
+
+def _upload_dir(job_id: int) -> Path:
+    base = Path(os.environ.get("PROPERTY_STUDIO_UPLOAD_DIR", "uploads"))
+    job_dir = base / f"job_{job_id}"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    return job_dir
+
+
+@app.post("/api/jobs/{job_id}/brochure")
+async def upload_brochure(
+    job_id: int, file: UploadFile = File(...), session: Session = Depends(get_session)
+) -> dict:
+    job = session.get(PropertyJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    if file.content_type != "application/pdf" and not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(400, "brochure must be a PDF file")
+
+    dest = _upload_dir(job_id) / "brochure.pdf"
+    contents = await file.read()
+    dest.write_bytes(contents)
+
+    job.pdf_brochure_path = str(dest)
+    session.add(job)
+    session.commit()
+    return {"pdf_brochure_path": job.pdf_brochure_path}
+
+
+@app.post("/api/jobs/{job_id}/photos", status_code=201)
+async def upload_photos(
+    job_id: int, files: list[UploadFile] = File(...), session: Session = Depends(get_session)
+) -> list[Photo]:
+    job = session.get(PropertyJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+
+    existing_count = len(
+        session.exec(select(Photo).where(Photo.job_id == job_id)).all()
+    )
+
+    dest_dir = _upload_dir(job_id) / "photos"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    created: list[Photo] = []
+    for i, upload in enumerate(files):
+        suffix = Path(upload.filename or "photo.jpg").suffix or ".jpg"
+        dest = dest_dir / f"{uuid.uuid4().hex}{suffix}"
+        contents = await upload.read()
+        dest.write_bytes(contents)
+
+        photo = Photo(
+            job_id=job_id,
+            source_path=str(dest),
+            order_index=existing_count + i,
+        )
+        session.add(photo)
+        created.append(photo)
+
+    session.commit()
+    for photo in created:
+        session.refresh(photo)
+    return created
+
+
+@app.get("/api/jobs/{job_id}/photos")
+def list_job_photos(job_id: int, session: Session = Depends(get_session)) -> list[Photo]:
+    job = session.get(PropertyJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    return session.exec(
+        select(Photo).where(Photo.job_id == job_id).order_by(Photo.order_index)
+    ).all()
 
 
 @app.post("/api/jobs/{job_id}/location")
