@@ -83,11 +83,29 @@ def create_job(job: PropertyJob, session: Session = Depends(get_session)) -> Pro
     return job
 
 
+_MAX_UPLOAD_MB = int(os.environ.get("PROPERTY_STUDIO_MAX_UPLOAD_MB", "25"))
+_MAX_UPLOAD_BYTES = _MAX_UPLOAD_MB * 1024 * 1024
+
+
 def _upload_dir(job_id: int) -> Path:
     base = Path(os.environ.get("PROPERTY_STUDIO_UPLOAD_DIR", "uploads"))
     job_dir = base / f"job_{job_id}"
     job_dir.mkdir(parents=True, exist_ok=True)
     return job_dir
+
+
+async def _read_capped(upload: UploadFile, *, context: str) -> bytes:
+    """Read an upload's contents, rejecting anything over `_MAX_UPLOAD_BYTES`.
+
+    `UploadFile.read()` buffers the whole body into memory with no size limit
+    of its own, which makes an uncapped read a memory-exhaustion vector on a
+    public upload endpoint. Reading one extra byte past the cap is enough to
+    detect an oversized upload without buffering the entire file first.
+    """
+    contents = await upload.read(_MAX_UPLOAD_BYTES + 1)
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"{context} exceeds the {_MAX_UPLOAD_MB}MB upload limit")
+    return contents
 
 
 @app.post("/api/jobs/{job_id}/brochure")
@@ -100,8 +118,9 @@ async def upload_brochure(
     if file.content_type != "application/pdf" and not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "brochure must be a PDF file")
 
+    contents = await _read_capped(file, context="brochure")
+
     dest = _upload_dir(job_id) / "brochure.pdf"
-    contents = await file.read()
     dest.write_bytes(contents)
 
     job.pdf_brochure_path = str(dest)
@@ -118,6 +137,12 @@ async def upload_photos(
     if job is None:
         raise HTTPException(404, "job not found")
 
+    for upload in files:
+        if not (upload.content_type or "").startswith("image/"):
+            raise HTTPException(
+                400, f"{upload.filename or 'upload'} is not an image (content_type={upload.content_type!r})"
+            )
+
     existing_count = len(
         session.exec(select(Photo).where(Photo.job_id == job_id)).all()
     )
@@ -127,9 +152,9 @@ async def upload_photos(
 
     created: list[Photo] = []
     for i, upload in enumerate(files):
+        contents = await _read_capped(upload, context=upload.filename or "photo")
         suffix = Path(upload.filename or "photo.jpg").suffix or ".jpg"
         dest = dest_dir / f"{uuid.uuid4().hex}{suffix}"
-        contents = await upload.read()
         dest.write_bytes(contents)
 
         photo = Photo(

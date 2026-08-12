@@ -73,9 +73,7 @@ def test_upload_photos_creates_photo_rows(api_client) -> None:
     assert resp.status_code == 201
     photos = resp.json()
     assert len(photos) == 2
-    assert {p["source_path"] for p in photos} == {
-        p["source_path"] for p in photos
-    }  # sanity: both distinct rows returned
+    assert len({p["source_path"] for p in photos}) == 2  # both rows have distinct file paths
 
     list_resp = api_client.get(f"/api/jobs/{job_id}/photos")
     assert list_resp.status_code == 200
@@ -88,3 +86,44 @@ def test_upload_photos_unknown_job_returns_404(api_client) -> None:
         files=[("files", ("x.jpg", io.BytesIO(b"x"), "image/jpeg"))],
     )
     assert resp.status_code == 404
+
+
+def test_upload_photos_rejects_non_image_content_type(api_client) -> None:
+    job_id = _create_job(api_client)
+    resp = api_client.post(
+        f"/api/jobs/{job_id}/photos",
+        files=[("files", ("virus.exe", io.BytesIO(b"MZ..."), "application/x-msdownload"))],
+    )
+    assert resp.status_code == 400
+
+
+def test_upload_brochure_rejects_oversized_file(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PROPERTY_STUDIO_DB", str(tmp_path / "test.db"))
+    monkeypatch.setenv("PROPERTY_STUDIO_SECRET_KEY_FILE", str(tmp_path / "secret.key"))
+    monkeypatch.setenv("PROPERTY_STUDIO_UPLOAD_DIR", str(tmp_path / "uploads"))
+    monkeypatch.setenv("PROPERTY_STUDIO_MAX_UPLOAD_MB", "1")
+
+    import importlib
+
+    import app.db as db_mod
+    import app.main as main_mod
+    import app.services.secrets_store as secrets_mod
+    from sqlmodel import create_engine
+
+    db_mod.engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", connect_args={"check_same_thread": False})
+    secrets_mod._default_store = None
+    secrets_mod.DEFAULT_KEY_PATH = tmp_path / "secret.key"
+    importlib.reload(main_mod)
+
+    from fastapi.testclient import TestClient
+
+    with TestClient(main_mod.app) as client:
+        job_id = _create_job(client)
+        oversized = b"%PDF-1.4 " + (b"x" * (2 * 1024 * 1024))
+        resp = client.post(
+            f"/api/jobs/{job_id}/brochure",
+            files={"file": ("brochure.pdf", io.BytesIO(oversized), "application/pdf")},
+        )
+        assert resp.status_code == 413
+
+    importlib.reload(main_mod)  # restore default cap for subsequent tests in this process
