@@ -249,6 +249,78 @@ def test_snapshot_construction_refuses_unverified_avatar_job(db_session, brochur
         build_job_snapshot(db_session, job)
 
 
+def test_script_and_voice_uses_segments_when_present(db_session, monkeypatch, tmp_path) -> None:
+    """When a job has ScriptSegment rows, ScriptAndVoiceStep should synthesize
+    them as one continuous take (excluding an avatar-on intro) rather than
+    using the legacy walkthrough/avatar_opening script keys."""
+    import wave
+
+    from app.models import AgentProfile, PropertyJob, ScriptSegment
+    from app.pipeline.contract import JobContext
+    from app.pipeline.steps import script_and_voice as script_and_voice_mod
+    from app.pipeline.steps.script_and_voice import ScriptAndVoiceStep
+
+    def _write_silent_wav(path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x00\x00" * 16000)
+        return path
+
+    class _FakeTtsClient:
+        """Writes a real (silent) WAV instead of StubElevenLabsClient's text
+        placeholder, since this path feeds pydub for slicing -- same pattern
+        as tests/test_script_audio.py's _FakeElevenLabsClient."""
+
+        def synthesize(self, *, voice_id: str, text: str, output_path: Path) -> Path:
+            return _write_silent_wav(output_path)
+
+    monkeypatch.setattr(script_and_voice_mod, "get_active_tts_client", lambda **kw: _FakeTtsClient())
+
+    # `_no_network` (autouse) points app.db.engine at its own isolated engine,
+    # separate from db_session's in-memory engine. ScriptAndVoiceStep's
+    # segmented path opens its own `Session(engine)` via `from ...db import
+    # engine`, so it must see the SAME database db_session writes to here --
+    # otherwise it would find zero ScriptSegment rows and silently fall
+    # through to the legacy path. Point app.db.engine at db_session's engine.
+    import app.db as db_mod
+
+    monkeypatch.setattr(db_mod, "engine", db_session.get_bind())
+
+    agent = AgentProfile(agency_name="Thornes", staff_name="Luke")
+    consent.set_elevenlabs_voice(agent, "voice_abc", consent_confirmed=True)
+    db_session.add(agent)
+    db_session.commit()
+    db_session.refresh(agent)
+
+    job = PropertyJob(agent_id=agent.id, address="1 Test St", postcode="TE1 1ST", use_avatar=False)
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    db_session.add(ScriptSegment(job_id=job.id, order_index=0, text="Hi there.", is_intro=True))
+    db_session.add(ScriptSegment(job_id=job.id, order_index=1, text="The kitchen is bright."))
+    db_session.commit()
+
+    snapshot = build_job_snapshot(db_session, job)
+    ctx = JobContext(
+        job_id=job.id,
+        work_dir=tmp_path / "work",
+        feature_level=job.feature_level,
+        use_avatar=job.use_avatar,
+        job_snapshot=snapshot,
+    )
+
+    step = ScriptAndVoiceStep()
+    result = step.run(ctx)
+
+    assert result.status is StepStatus.DONE
+    assert "segment_audio_paths" in result.artifacts
+    assert len(result.artifacts["segment_audio_paths"]) == 2
+
+
 def test_resume_does_not_rerun_completed_steps(db_session, brochure_pdf, sample_photo, tmp_path):
     job, agent = _make_job(
         db_session, brochure_pdf=brochure_pdf, photo=sample_photo, feature_level=FeatureLevel.STANDARD
