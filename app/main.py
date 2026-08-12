@@ -85,6 +85,27 @@ def create_job(job: PropertyJob, session: Session = Depends(get_session)) -> Pro
     return job
 
 
+class UpdateJobRequest(BaseModel):
+    use_avatar: Optional[bool] = None
+
+
+@app.patch("/api/jobs/{job_id}")
+def update_job(
+    job_id: int, body: UpdateJobRequest, session: Session = Depends(get_session)
+) -> PropertyJob:
+    job = session.get(PropertyJob, job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+
+    if body.use_avatar is not None:
+        job.use_avatar = body.use_avatar
+
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+    return job
+
+
 _MAX_UPLOAD_MB = int(os.environ.get("PROPERTY_STUDIO_MAX_UPLOAD_MB", "25"))
 _MAX_UPLOAD_BYTES = _MAX_UPLOAD_MB * 1024 * 1024
 
