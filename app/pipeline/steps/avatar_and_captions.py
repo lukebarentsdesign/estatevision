@@ -86,6 +86,16 @@ class CaptionTimingStep(PipelineStep):
     critical = False
 
     def run(self, ctx: JobContext) -> StepResult:
+        # ScriptAndVoiceStep's segmented branch (see script_and_voice.py)
+        # produces `segment_audio_paths`, not `audio_paths` -- per-segment
+        # kinetic captions aren't wired up yet (Segment.captions is always
+        # empty in RemotionAssemblyStep's segmented path today), so this
+        # step has nothing to do for a segmented job. Skip cleanly rather
+        # than crash on `None.get(...)`, matching how AvatarIntroStep
+        # handles the same legacy-vs-segmented artifact-shape split.
+        if ctx.artifacts.get("script_and_voice", {}).get("segment_audio_paths") is not None:
+            return StepResult(StepStatus.SKIPPED, message="per-segment captions not yet implemented")
+
         audio_paths = ctx.artifact("script_and_voice", "audio_paths")
         walkthrough_audio = audio_paths.get("walkthrough")
         if not walkthrough_audio:

@@ -440,6 +440,54 @@ def test_script_and_voice_avatar_on_with_only_intro_segment_voices_nothing(
     assert result.artifacts["segment_audio_paths"] == {}
 
 
+def test_caption_timing_step_skips_cleanly_for_segmented_job(db_session, monkeypatch, tmp_path) -> None:
+    """CaptionTimingStep reads the legacy `audio_paths` artifact, which
+    ScriptAndVoiceStep's segmented branch never populates (it produces
+    `segment_audio_paths` instead) -- previously this crashed with
+    AttributeError on `None.get(...)` for every segmented job at plus+
+    levels. Must now skip cleanly instead."""
+    from app.models import AgentProfile, PropertyJob, ScriptSegment
+    from app.pipeline.contract import JobContext, StepStatus
+    from app.pipeline.steps.avatar_and_captions import CaptionTimingStep
+    from app.pipeline.steps.script_and_voice import ScriptAndVoiceStep
+
+    _wire_segmented_test_doubles(monkeypatch, db_session)
+
+    agent = AgentProfile(agency_name="Thornes", staff_name="Luke")
+    consent.set_elevenlabs_voice(agent, "voice_abc", consent_confirmed=True)
+    db_session.add(agent)
+    db_session.commit()
+    db_session.refresh(agent)
+
+    job = PropertyJob(
+        agent_id=agent.id, address="1 Test St", postcode="TE1 1ST",
+        use_avatar=False, feature_level=FeatureLevel.PLUS,
+    )
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+
+    db_session.add(ScriptSegment(job_id=job.id, order_index=0, text="Hi there.", is_intro=True))
+    db_session.add(ScriptSegment(job_id=job.id, order_index=1, text="The kitchen is bright."))
+    db_session.commit()
+
+    snapshot = build_job_snapshot(db_session, job)
+    ctx = JobContext(
+        job_id=job.id,
+        work_dir=tmp_path / "work",
+        feature_level=job.feature_level,
+        use_avatar=job.use_avatar,
+        job_snapshot=snapshot,
+    )
+
+    script_result = ScriptAndVoiceStep().run(ctx)
+    ctx.artifacts["script_and_voice"] = script_result.artifacts
+
+    result = CaptionTimingStep().run(ctx)
+
+    assert result.status is StepStatus.SKIPPED
+
+
 def test_avatar_intro_step_resolves_segmented_intro_text(db_session, monkeypatch, tmp_path) -> None:
     """AvatarIntroStep must resolve the intro line's text from the
     ScriptSegment flagged is_intro when ScriptAndVoiceStep took the

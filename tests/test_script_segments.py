@@ -174,3 +174,90 @@ def test_delete_segment(api_client) -> None:
 
     list_resp = api_client.get(f"/api/jobs/{job_id}/segments")
     assert list_resp.json() == []
+
+
+def test_run_pipeline_rejects_job_with_unassigned_segment_photo(api_client) -> None:
+    """A segment with no photo_id renders with an empty visual_path
+    downstream (RemotionAssemblyStep._run_segmented) -- /run must refuse
+    up front with a clear error rather than silently produce a malformed
+    render."""
+    job_id = _create_job_via_api(api_client)
+    api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely kitchen."})
+
+    resp = api_client.post(f"/api/jobs/{job_id}/run")
+
+    assert resp.status_code == 422
+    assert "photo" in resp.json()["detail"].lower()
+
+
+def test_run_pipeline_populates_script_json_for_segmented_job(api_client, monkeypatch, brochure_pdf) -> None:
+    """ScriptAndVoiceStep's segmented branch never populates the legacy
+    `scripts` artifact that job.script_json used to be assigned from
+    directly -- previously this silently left job.script_json as None for
+    every segmented job. Must now fall back to the segments themselves."""
+    import io
+    import wave
+
+    from app.pipeline.steps import script_and_voice as script_and_voice_mod
+    from app.services import consent as consent_mod
+
+    def _write_silent_wav(path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x00\x00" * 16000)
+
+    class _FakeTtsClient:
+        def synthesize(self, *, voice_id: str, text: str, output_path):
+            _write_silent_wav(output_path)
+            return output_path
+
+    monkeypatch.setattr(script_and_voice_mod, "get_active_tts_client", lambda **kw: _FakeTtsClient())
+
+    job_id = _create_job_via_api(api_client)
+
+    api_client.post(
+        f"/api/jobs/{job_id}/brochure",
+        files={"file": ("brochure.pdf", io.BytesIO(brochure_pdf.read_bytes()), "application/pdf")},
+    )
+
+    img_bytes = b"\xff\xd8\xff\xe0fake jpeg content"
+    photo_resp = api_client.post(
+        f"/api/jobs/{job_id}/photos",
+        files=[("files", ("kitchen.jpg", io.BytesIO(img_bytes), "image/jpeg"))],
+    )
+    photo_id = photo_resp.json()[0]["id"]
+
+    seg_resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely bright kitchen."})
+    segment_id = seg_resp.json()["id"]
+    api_client.put(f"/api/segments/{segment_id}", json={"photo_id": photo_id})
+
+    agent_resp = api_client.post("/api/agents", json={"agency_name": "Test Agency"})
+    agent_id = agent_resp.json()["id"]
+
+    import app.db as db_mod
+    from sqlmodel import Session
+
+    with Session(db_mod.engine) as session:
+        from app.models import AgentProfile, PropertyJob
+
+        agent = session.get(AgentProfile, agent_id)
+        consent_mod.set_elevenlabs_voice(agent, "voice_abc", consent_confirmed=True)
+        session.add(agent)
+
+        job = session.get(PropertyJob, job_id)
+        job.agent_id = agent_id
+        session.add(job)
+        session.commit()
+
+    monkeypatch.delenv("LOCAL_TOOLS_AVAILABLE", raising=False)
+
+    run_resp = api_client.post(f"/api/jobs/{job_id}/run")
+    assert run_resp.status_code == 200, run_resp.text
+
+    job_resp = api_client.get(f"/api/jobs/{job_id}")
+    script_json = job_resp.json()["script_json"]
+    assert script_json is not None
+    assert "A lovely bright kitchen." in script_json["walkthrough_script"]

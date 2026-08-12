@@ -306,6 +306,25 @@ def run_pipeline(job_id: int, session: Session = Depends(get_session)) -> dict:
     if job is None:
         raise HTTPException(404, "job not found")
 
+    segments = list_segments(session, job_id)
+    if segments:
+        # A segment with no assigned photo renders with an empty visual_path
+        # (see RemotionAssemblyStep._run_segmented) -- refuse up front rather
+        # than produce a malformed video. The avatar-intro segment is exempt:
+        # its visual comes from the HeyGen clip, not a photo, when use_avatar
+        # is set (checked here defensively even though avatar_intro's own
+        # gating already covers the common case).
+        unassigned = [
+            s.id for s in segments
+            if s.photo_id is None and not (s.is_intro and job.use_avatar)
+        ]
+        if unassigned:
+            raise HTTPException(
+                422,
+                f"segment(s) {unassigned} have no photo assigned; assign a photo to "
+                "every segment before running the pipeline",
+            )
+
     assert_transition(job.status, JobStatus.PROCESSING)
     job.status = JobStatus.PROCESSING
     session.add(job)
@@ -332,7 +351,21 @@ def run_pipeline(job_id: int, session: Session = Depends(get_session)) -> dict:
         raise HTTPException(500, f"pipeline failed: {exc}") from exc
 
     job.status = JobStatus.REVIEW
-    job.script_json = ctx.artifact("script_and_voice", "scripts")
+    scripts = ctx.artifact("script_and_voice", "scripts")
+    if scripts is not None:
+        job.script_json = scripts
+    else:
+        # Segmented jobs never populate the legacy "scripts" artifact (see
+        # ScriptAndVoiceStep._run_segmented) -- fall back to the segments
+        # themselves so job.script_json isn't silently left None for a
+        # segmented job. Segment CRUD (app.services.script_segments) is the
+        # source of truth for editing; this is a read-oriented summary.
+        segments = list_segments(session, job.id)
+        if segments:
+            job.script_json = {
+                "walkthrough_script": " ".join(s.text for s in segments),
+                "segments": [{"id": s.id, "text": s.text, "is_intro": s.is_intro} for s in segments],
+            }
     session.add(job)
     session.commit()
 
