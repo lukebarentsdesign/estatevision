@@ -9,6 +9,8 @@ pdfplumber>=0.11
 opencv-python>=4.10
 numpy>=1.26
 suncalc>=0.1.3
+pydub>=0.25
+audioop-lts>=0.2; python_version >= "3.13"  # stdlib audioop was removed in 3.13+; pydub needs this backport
 
 # HTTP clients for external services
 httpx>=0.27
