@@ -90,3 +90,95 @@ def test_remotion_project_scaffold_exists() -> None:
     assert composition.exists()
     composition_source = composition.read_text(encoding="utf-8")
     assert "disclosure_badge" in composition_source  # §1.4 badge must be rendered
+
+
+def _write_silent_wav(path: Path, duration_ms: int = 500) -> None:
+    """Writes a trivial, real, silent mono WAV file so pydub's
+    `AudioSegment.from_file` (used by `_audio_duration_sec`) has a real file
+    to open, matching the technique used by fake TTS clients elsewhere in
+    this test suite."""
+    import wave
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    framerate = 8000
+    n_frames = int(framerate * duration_ms / 1000)
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(framerate)
+        wf.writeframes(b"\x00\x00" * n_frames)
+
+
+def test_remotion_assembly_uses_segmented_path_when_segments_exist(tmp_path, monkeypatch) -> None:
+    """When motion_pass/script_and_voice artifacts include segment audio
+    (from ScriptAndVoiceStep's segmented branch), RemotionAssemblyStep
+    should build SegmentedRenderProps instead of the legacy RenderProps."""
+    from sqlmodel import Session, SQLModel, create_engine
+
+    import app.db as db_mod
+    from app.models import AgentProfile, Photo, PropertyJob, ScriptSegment
+    from app.pipeline.contract import JobContext, StepStatus
+    from app.pipeline.steps.assembly import RemotionAssemblyStep
+
+    monkeypatch.delenv("LOCAL_TOOLS_AVAILABLE", raising=False)
+
+    isolated_engine = create_engine(
+        f"sqlite:///{tmp_path / 'isolated.db'}", connect_args={"check_same_thread": False}
+    )
+    SQLModel.metadata.create_all(isolated_engine)
+    monkeypatch.setattr(db_mod, "engine", isolated_engine)
+
+    with Session(isolated_engine) as session:
+        agent = AgentProfile(agency_name="Test Agency")
+        session.add(agent)
+        session.commit()
+        session.refresh(agent)
+
+        job = PropertyJob(agent_id=agent.id, address="1 Test St", postcode="TE1 1ST")
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+
+        photo = Photo(job_id=job.id, source_path="/p/kitchen.jpg", processed_path="/p/kitchen_p.jpg", order_index=0)
+        session.add(photo)
+        session.commit()
+        session.refresh(photo)
+
+        segment = ScriptSegment(job_id=job.id, order_index=0, text="The kitchen is bright.", photo_id=photo.id)
+        session.add(segment)
+        session.commit()
+        session.refresh(segment)
+
+        job_id, photo_id, segment_id, agent_id = job.id, photo.id, segment.id, agent.id
+
+    # Named .wav (not .mp3): pydub's AudioSegment.from_file auto-detects
+    # format from the extension by default, and a real WAV file named
+    # ".mp3" would make it try to decode via ffmpeg, which isn't installed
+    # in this environment (see app/clients/audio_slicing.py's own reasoning
+    # for defaulting to WAV over MP3 for the same underlying reason).
+    segment_audio_path = tmp_path / "segment_0.wav"
+    _write_silent_wav(segment_audio_path)
+
+    snapshot = {
+        "id": job_id,
+        "address": "1 Test St",
+        "postcode": "TE1 1ST",
+        "feature_level": "standard",
+        "agent": {"id": agent_id, "agency_name": "Test Agency", "primary_color": "#111827", "secondary_color": "#6b7280"},
+        "photos": [
+            {"id": photo_id, "job_id": job_id, "source_path": "/p/kitchen.jpg", "processed_path": "/p/kitchen_p.jpg", "order_index": 0},
+        ],
+    }
+    ctx = JobContext(job_id=job_id, work_dir=tmp_path, feature_level="standard", use_avatar=False, job_snapshot=snapshot)
+    ctx.artifacts["motion_pass"] = {"clip_paths": {str(photo_id): "/p/kitchen_clip.mp4"}}
+    ctx.artifacts["script_and_voice"] = {
+        "segment_audio_paths": {segment_id: str(segment_audio_path)},
+        "intro_segment_id": None,
+        "intro_via_avatar": False,
+    }
+
+    step = RemotionAssemblyStep()
+    result = step.run(ctx)
+
+    assert result.status is StepStatus.DONE
+    assert "render_outputs" in result.artifacts

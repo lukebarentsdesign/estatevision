@@ -12,7 +12,8 @@ import subprocess
 from pathlib import Path
 
 from ...models import AgentProfile, FeatureLevel, Photo
-from ...services.render_contract import build_render_props
+from ...services.compliance import AI_DISCLOSURE_BADGE_TEXT
+from ...services.render_contract import CaptionCue, Segment, build_render_props, build_segmented_render_props
 from ..contract import JobContext, PipelineStep, StepResult, StepStatus
 
 REMOTION_DIR = Path(__file__).resolve().parents[3] / "remotion"
@@ -89,6 +90,12 @@ class RemotionAssemblyStep(PipelineStep):
     def run(self, ctx: JobContext) -> StepResult:
         job = ctx.job_snapshot
         agent = _agent_from_snapshot(job["agent"])
+
+        segment_audio_paths = ctx.artifacts.get("script_and_voice", {}).get("segment_audio_paths")
+        if segment_audio_paths is not None:
+            return self._run_segmented(ctx, job, agent)
+
+        # --- legacy path (unchanged) ---
         clip_paths = ctx.artifact("motion_pass", "clip_paths")
         audio_paths = ctx.artifact("script_and_voice", "audio_paths")
 
@@ -127,6 +134,84 @@ class RemotionAssemblyStep(PipelineStep):
             outputs[f"reel_{i}"] = self._render(reel_props, out_dir / f"reel_{i}.mp4")
 
         return StepResult(StepStatus.DONE, {"render_outputs": outputs})
+
+    def _run_segmented(self, ctx: JobContext, job: dict, agent) -> StepResult:
+        from sqlmodel import Session
+
+        from ...db import engine
+        from ...services.script_segments import list_segments
+
+        clip_paths = ctx.artifact("motion_pass", "clip_paths")
+        segment_audio_paths = ctx.artifact("script_and_voice", "segment_audio_paths")
+        intro_via_avatar = ctx.artifact("script_and_voice", "intro_via_avatar")
+
+        with Session(engine) as session:
+            segments = list_segments(session, ctx.job_id)
+
+        photos_by_id = {p["id"]: p for p in job["photos"]}
+
+        render_segments: list[Segment] = []
+        for seg in segments:
+            if seg.is_intro and intro_via_avatar:
+                avatar_clip_path = ctx.artifacts.get("avatar_intro", {}).get("avatar_clip_path")
+                avatar_duration = self._audio_duration_sec(avatar_clip_path) if avatar_clip_path else 4.0
+                render_segments.append(
+                    Segment(
+                        text=seg.text,
+                        visual_path=avatar_clip_path or "",
+                        audio_path=None,
+                        duration_sec=avatar_duration,
+                        captions=(),
+                        is_avatar=True,
+                        disclosure_badge=None,
+                    )
+                )
+                continue
+
+            photo = photos_by_id.get(seg.photo_id)
+            visual_path = clip_paths.get(str(seg.photo_id), "") if photo else ""
+            audio_path = segment_audio_paths.get(seg.id)
+            duration_sec = self._audio_duration_sec(audio_path) if audio_path else 4.0
+            render_segments.append(
+                Segment(
+                    text=seg.text,
+                    visual_path=visual_path,
+                    audio_path=audio_path,
+                    duration_sec=duration_sec,
+                    captions=(),
+                    is_avatar=False,
+                    disclosure_badge=(
+                        AI_DISCLOSURE_BADGE_TEXT if photo and photo.get("sky_replaced") else None
+                    ),
+                )
+            )
+
+        out_dir = ctx.work_dir / "render"
+        props = build_segmented_render_props(
+            composition="Master16x9",
+            job=_job_stub(job),
+            agent=agent,
+            segments=render_segments,
+            lower_third=agent.agency_name,
+        )
+        output_path = self._render(props, out_dir / "master_16x9.mp4")
+
+        return StepResult(StepStatus.DONE, {"render_outputs": {"master_16x9": output_path}})
+
+    @staticmethod
+    def _audio_duration_sec(path: str) -> float:
+        """Real duration of an audio/video file at `path`, in seconds.
+
+        `build_segmented_render_props` (Task 8) requires every Segment to
+        carry a real, positive duration -- there is no other source of truth
+        for a segment's actual spoken length than the file itself, since
+        `ScriptSegment.duration_sec` is not currently persisted back to the
+        DB by any upstream step.
+        """
+        from pydub import AudioSegment
+
+        audio = AudioSegment.from_file(path)
+        return len(audio) / 1000.0
 
     def _render(self, props, output_path: Path) -> str:
         props_path = output_path.with_suffix(".props.json")

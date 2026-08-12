@@ -31,10 +31,9 @@ class AvatarIntroStep(PipelineStep):
 
     def run(self, ctx: JobContext) -> StepResult:
         job = ctx.job_snapshot
-        scripts = ctx.artifact("script_and_voice", "scripts")
-        opening_line = scripts.get("avatar_opening")
+        opening_line = self._resolve_opening_line(ctx)
         if not opening_line:
-            return StepResult(StepStatus.SKIPPED, message="no avatar_opening script produced")
+            return StepResult(StepStatus.SKIPPED, message="no avatar opening line available")
 
         # `job_snapshot["heygen_avatar_id"]` is populated only after
         # `services.consent.require_avatar` passed -- see
@@ -53,6 +52,29 @@ class AvatarIntroStep(PipelineStep):
             output_path=ctx.work_dir / "avatar" / "intro.mp4",
         )
         return StepResult(StepStatus.DONE, {"avatar_clip_path": str(clip_path)})
+
+    @staticmethod
+    def _resolve_opening_line(ctx: JobContext) -> str | None:
+        """The intro line's text, from either the legacy `scripts` dict
+        (`avatar_opening` key) or -- for jobs with ScriptSegment rows -- the
+        segment flagged `is_intro`, looked up directly from the DB since
+        ScriptAndVoiceStep's segmented branch doesn't populate `scripts`."""
+        intro_via_avatar = ctx.artifacts.get("script_and_voice", {}).get("intro_via_avatar")
+        if intro_via_avatar:
+            from sqlmodel import Session
+
+            from ...db import engine
+            from ...services.script_segments import list_segments
+
+            with Session(engine) as session:
+                segments = list_segments(session, ctx.job_id)
+            intro = next((s for s in segments if s.is_intro), None)
+            return intro.text if intro else None
+
+        scripts = ctx.artifact("script_and_voice", "scripts")
+        if scripts is None:
+            return None
+        return scripts.get("avatar_opening")
 
 
 class CaptionTimingStep(PipelineStep):
