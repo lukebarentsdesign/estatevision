@@ -40,6 +40,12 @@ class AgentProfile(SQLModel, table=True):
     primary_color: str = "#111827"
     secondary_color: str = "#6b7280"
     logo_path: Optional[str] = None
+
+    # Legacy single-presenter fields (staff members phase 1 design,
+    # 2026-08-13). Superseded in intent by StaffMember, which supports up to
+    # 5 presenters per agency -- but the pipeline still reads these directly
+    # and hasn't been rewired to StaffMember yet (that's phase 2). Do not
+    # remove until phase 2 lands.
     staff_name: Optional[str] = None
     staff_headshot_path: Optional[str] = None
 
