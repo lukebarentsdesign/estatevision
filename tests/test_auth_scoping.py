@@ -101,3 +101,30 @@ def test_dashboard_serves_normally_when_authenticated(api_client):
     api_client.post("/api/login", json={"email": "a@thornes.org.uk", "password": "pw"})
     resp = api_client.get("/", follow_redirects=False)
     assert resp.status_code == 200
+
+
+def test_dashboard_redirects_when_agency_deactivated(api_client):
+    import app.db as db_mod
+    from sqlmodel import Session
+
+    from app.models import AgentProfile
+    from app.services.auth import hash_password
+
+    with Session(db_mod.engine) as session:
+        agent = AgentProfile(agency_name="Thornes", email="a@thornes.org.uk", password_hash=hash_password("pw"))
+        session.add(agent)
+        session.commit()
+        session.refresh(agent)
+        agent_id = agent.id
+
+    api_client.post("/api/login", json={"email": "a@thornes.org.uk", "password": "pw"})
+
+    with Session(db_mod.engine) as session:
+        agent = session.get(AgentProfile, agent_id)
+        agent.is_active = False
+        session.add(agent)
+        session.commit()
+
+    resp = api_client.get("/", follow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/login"
