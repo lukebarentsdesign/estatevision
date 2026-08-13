@@ -1,6 +1,6 @@
 """UK neighbourhood data aggregator (spec §5).
 
-Combines four independent sources into `job.location_data_json`. Each source is
+Combines independent sources into `job.location_data_json`. Each source is
 fetched defensively -- one API being down must not prevent the others from
 returning data, since this is marketing colour, not a compliance surface.
 """
@@ -17,19 +17,9 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-SCHOOLS_API_BASE = "https://get-information-schools.service.gov.uk/api"
 OVERPASS_API_BASE = "https://overpass-api.de/api/interpreter"
-OFCOM_API_BASE = "https://api.checker.ofcom.org.uk"
 
 _REQUEST_TIMEOUT = 10.0
-
-
-@dataclass(frozen=True)
-class School:
-    name: str
-    phase: str
-    ofsted_rating: str
-    distance_km: float
 
 
 @dataclass(frozen=True)
@@ -37,14 +27,6 @@ class Amenity:
     name: str
     category: str
     distance_m: float
-
-
-@dataclass(frozen=True)
-class BroadbandInfo:
-    max_download_mbps: float | None
-    fttp_available: bool
-    ultrafast_available: bool
-    five_g_available: bool
 
 
 @dataclass(frozen=True)
@@ -60,39 +42,6 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dlambda = math.radians(lon2 - lon1)
     a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     return 2 * r * math.asin(math.sqrt(a))
-
-
-def get_nearby_schools(
-    latitude: float, longitude: float, *, limit: int = 3, client: httpx.Client | None = None
-) -> list[School]:
-    """3 nearest Outstanding/Good schools (§5.1). Empty list on failure."""
-    owns_client = client is None
-    client = client or httpx.Client(timeout=_REQUEST_TIMEOUT)
-    try:
-        resp = client.get(
-            f"{SCHOOLS_API_BASE}/schools",
-            params={"lat": latitude, "lon": longitude, "radius_km": 5},
-        )
-        resp.raise_for_status()
-        raw = resp.json().get("schools", [])
-    except (httpx.HTTPError, ValueError) as exc:
-        log.warning("schools lookup failed: %s", exc)
-        return []
-    finally:
-        if owns_client:
-            client.close()
-
-    schools = [
-        School(
-            name=s["name"],
-            phase=s.get("phase", "unknown"),
-            ofsted_rating=s.get("ofsted_rating", "unknown"),
-            distance_km=_haversine_km(latitude, longitude, s["lat"], s["lon"]),
-        )
-        for s in raw
-        if s.get("ofsted_rating") in {"Outstanding", "Good"}
-    ]
-    return sorted(schools, key=lambda s: s.distance_km)[:limit]
 
 
 _OVERPASS_CATEGORIES: dict[str, str] = {
@@ -152,31 +101,6 @@ def _matches_category(tags: dict[str, str], category: str) -> bool:
     }.get(category, False)
 
 
-def get_broadband_info(
-    postcode: str, *, client: httpx.Client | None = None
-) -> BroadbandInfo:
-    """Max download speed and coverage flags (§5.3). Defaults on failure."""
-    owns_client = client is None
-    client = client or httpx.Client(timeout=_REQUEST_TIMEOUT)
-    try:
-        resp = client.get(f"{OFCOM_API_BASE}/coverage", params={"postcode": postcode})
-        resp.raise_for_status()
-        data = resp.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        log.warning("broadband lookup failed: %s", exc)
-        return BroadbandInfo(None, False, False, False)
-    finally:
-        if owns_client:
-            client.close()
-
-    return BroadbandInfo(
-        max_download_mbps=data.get("max_download_mbps"),
-        fttp_available=bool(data.get("fttp_available")),
-        ultrafast_available=bool(data.get("ultrafast_available")),
-        five_g_available=bool(data.get("five_g_available")),
-    )
-
-
 def get_daylight_info(garden_orientation: str | None) -> DaylightInfo | None:
     """Solar-position-derived daylight statement from garden orientation (§5.4)."""
     if not garden_orientation:
@@ -205,21 +129,24 @@ def build_location_data(
     postcode: str,
     garden_orientation: str | None,
 ) -> dict[str, Any]:
-    """Aggregate all four sources into the dict stored on `job.location_data_json`."""
-    schools: list[School] = []
+    """Aggregate amenities and daylight into the dict stored on `job.location_data_json`.
+
+    Schools and broadband were removed from this aggregation (spec: remove
+    schools/broadband design, 2026-08-13) -- they added marketing colour the
+    user judged not worth the API surface and screen time. `postcode` is kept
+    as a parameter for signature stability even though it's unused here,
+    since `app.main.refresh_location_data` already calls this by keyword and
+    daylight/amenities may grow a postcode-based source later.
+    """
     amenities: list[Amenity] = []
 
     if latitude is not None and longitude is not None:
         with httpx.Client(timeout=_REQUEST_TIMEOUT) as client:
-            schools = get_nearby_schools(latitude, longitude, client=client)
             amenities = get_nearby_amenities(latitude, longitude, client=client)
 
-    broadband = get_broadband_info(postcode)
     daylight = get_daylight_info(garden_orientation)
 
     return {
-        "schools": [asdict(s) for s in schools],
         "amenities": [asdict(a) for a in amenities],
-        "broadband": asdict(broadband),
         "daylight": asdict(daylight) if daylight else None,
     }
