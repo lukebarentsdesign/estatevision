@@ -160,8 +160,8 @@ python -m pytest tests/ -q
 ### Credentials
 
 Preferred path: run the app and open **`/admin/integrations`**. Every known
-system (HeyGen, ElevenLabs, Gemini Omni, OpenAI, Google 3D Tiles, the schools
-and broadband APIs) is listed with its required fields, a masked view of
+system (HeyGen, ElevenLabs, Gemini Omni, OpenAI, Google 3D Tiles) is listed
+with its required fields, a masked view of
 what's already configured, and a "Test connection" button that makes a real
 read-only API call where one safely exists. Keys are encrypted at rest and
 take effect immediately — no restart, no `.env` edit.
