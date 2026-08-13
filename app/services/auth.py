@@ -84,3 +84,54 @@ def decode_session_cookie(
     if not isinstance(data, dict) or "account_type" not in data or "account_id" not in data:
         return None
     return {"account_type": data["account_type"], "account_id": data["account_id"]}
+
+
+def _get_session_payload(request) -> Optional[SessionPayload]:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if token is None:
+        return None
+    return decode_session_cookie(token)
+
+
+def require_agency(request, session=None):
+    """FastAPI dependency: returns the logged-in `AgentProfile` or raises 401.
+
+    Imports are deferred to avoid a module-level circular import between
+    this module and `app.models`/`app.db` (both of which are imported by
+    `app.main`, which will import this module).
+    """
+    from fastapi import Depends, HTTPException
+
+    from ..db import get_session
+    from ..models import AgentProfile
+
+    if session is None:
+        raise RuntimeError("require_agency must be called with an explicit session in tests")
+
+    payload = _get_session_payload(request)
+    if payload is None or payload["account_type"] != "agency":
+        raise HTTPException(401, "not logged in")
+
+    agent = session.get(AgentProfile, payload["account_id"])
+    if agent is None or not agent.is_active:
+        raise HTTPException(401, "not logged in")
+    return agent
+
+
+def require_admin(request, session=None):
+    """FastAPI dependency: returns the logged-in `AdminAccount` or raises 401."""
+    from fastapi import HTTPException
+
+    from ..models import AdminAccount
+
+    if session is None:
+        raise RuntimeError("require_admin must be called with an explicit session in tests")
+
+    payload = _get_session_payload(request)
+    if payload is None or payload["account_type"] != "admin":
+        raise HTTPException(401, "not logged in")
+
+    admin = session.get(AdminAccount, payload["account_id"])
+    if admin is None:
+        raise HTTPException(401, "not logged in")
+    return admin
