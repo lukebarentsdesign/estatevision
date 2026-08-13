@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -26,6 +26,7 @@ from .services import uk_location
 from .services.auth import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE_SECONDS,
+    decode_session_cookie,
     encode_session_cookie,
     hash_password,
     require_admin,
@@ -51,7 +52,13 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @app.get("/")
-def dashboard_page() -> FileResponse:
+def dashboard_page(request: Request):
+    from fastapi.responses import RedirectResponse
+
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    payload = decode_session_cookie(token) if token else None
+    if payload is None or payload["account_type"] != "agency":
+        return RedirectResponse("/login", status_code=307)
     return FileResponse(_STATIC_DIR / "index.html")
 
 

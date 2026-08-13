@@ -79,3 +79,25 @@ def test_admin_route_rejects_agency_session(api_client):
     _create_agency_and_login(api_client, email="a@agency-a.com", password="pw-a", agency_name="Agency A")
     resp = api_client.get("/api/integrations")
     assert resp.status_code == 401
+
+
+def test_dashboard_redirects_to_login_when_not_authenticated(api_client):
+    resp = api_client.get("/", follow_redirects=False)
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "/login"
+
+
+def test_dashboard_serves_normally_when_authenticated(api_client):
+    import app.db as db_mod
+    from sqlmodel import Session
+
+    from app.models import AgentProfile
+    from app.services.auth import hash_password
+
+    with Session(db_mod.engine) as session:
+        session.add(AgentProfile(agency_name="Thornes", email="a@thornes.org.uk", password_hash=hash_password("pw")))
+        session.commit()
+
+    api_client.post("/api/login", json={"email": "a@thornes.org.uk", "password": "pw"})
+    resp = api_client.get("/", follow_redirects=False)
+    assert resp.status_code == 200
