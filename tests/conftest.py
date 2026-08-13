@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel.pool import StaticPool
 
 BROCHURE_LINES = [
     "A detached four bedroom family home set back from the road.",
@@ -47,3 +49,24 @@ def db_session():
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         yield session
+
+
+@pytest.fixture
+def api_client(tmp_path, monkeypatch):
+    """A TestClient wired to a fresh in-memory DB and a throwaway session
+    signing key, so each test gets an isolated app + auth state."""
+    import app.db as db_mod
+    import app.services.auth as auth_mod
+    from app.main import app
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    SQLModel.metadata.create_all(engine)
+    monkeypatch.setattr(db_mod, "engine", engine)
+
+    monkeypatch.setenv("PROPERTY_STUDIO_SESSION_KEY_FILE", str(tmp_path / "session.key"))
+    auth_mod._session_serializer = None
+
+    with TestClient(app) as client:
+        yield client

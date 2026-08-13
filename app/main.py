@@ -19,10 +19,19 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
-from .models import AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment
+from .models import AdminAccount, AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment
 from .pipeline.contract import JobContext, assert_transition
 from .pipeline.registry import build_job_snapshot, build_runner
 from .services import uk_location
+from .services.auth import (
+    SESSION_COOKIE_NAME,
+    SESSION_MAX_AGE_SECONDS,
+    encode_session_cookie,
+    hash_password,
+    require_admin,
+    require_agency,
+    verify_password,
+)
 from .services.compliance import assert_price_free
 from .services.integration_registry import list_integrations
 from .services.integration_settings import IntegrationSettings
@@ -49,6 +58,45 @@ def dashboard_page() -> FileResponse:
 @app.get("/admin/integrations")
 def admin_integrations_page() -> FileResponse:
     return FileResponse(_STATIC_DIR / "admin_integrations.html")
+
+
+@app.get("/login")
+def login_page() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "login.html")
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/login")
+def login(body: LoginRequest, response: Response, session: Session = Depends(get_session)) -> dict:
+    """Tries agency lookup first, then admin -- a single login form serves
+    both account types (spec: agency/admin auth design, 2026-08-13)."""
+    agent = session.exec(select(AgentProfile).where(AgentProfile.email == body.email)).first()
+    if agent is not None and agent.is_active and verify_password(body.password, agent.password_hash):
+        token = encode_session_cookie(account_type="agency", account_id=agent.id)
+        response.set_cookie(
+            SESSION_COOKIE_NAME, token, httponly=True, max_age=SESSION_MAX_AGE_SECONDS, samesite="lax"
+        )
+        return {"account_type": "agency", "redirect": "/"}
+
+    admin = session.exec(select(AdminAccount).where(AdminAccount.email == body.email)).first()
+    if admin is not None and verify_password(body.password, admin.password_hash):
+        token = encode_session_cookie(account_type="admin", account_id=admin.id)
+        response.set_cookie(
+            SESSION_COOKIE_NAME, token, httponly=True, max_age=SESSION_MAX_AGE_SECONDS, samesite="lax"
+        )
+        return {"account_type": "admin", "redirect": "/admin/agencies"}
+
+    raise HTTPException(401, "incorrect email or password")
+
+
+@app.post("/api/logout")
+def logout(response: Response) -> dict:
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return {"logged_out": True}
 
 
 @app.get("/api/agents")

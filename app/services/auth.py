@@ -16,8 +16,13 @@ import stat
 from pathlib import Path
 from typing import Literal, Optional, TypedDict
 
+from fastapi import Depends, HTTPException, Request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from passlib.hash import bcrypt
+from sqlmodel import Session
+
+from ..db import get_session
+from ..models import AdminAccount, AgentProfile
 
 SESSION_COOKIE_NAME = "ps_session"
 SESSION_MAX_AGE_SECONDS = 14 * 24 * 60 * 60  # 14 days, sliding on each request
@@ -93,21 +98,8 @@ def _get_session_payload(request) -> Optional[SessionPayload]:
     return decode_session_cookie(token)
 
 
-def require_agency(request, session=None):
-    """FastAPI dependency: returns the logged-in `AgentProfile` or raises 401.
-
-    Imports are deferred to avoid a module-level circular import between
-    this module and `app.models`/`app.db` (both of which are imported by
-    `app.main`, which will import this module).
-    """
-    from fastapi import Depends, HTTPException
-
-    from ..db import get_session
-    from ..models import AgentProfile
-
-    if session is None:
-        raise RuntimeError("require_agency must be called with an explicit session in tests")
-
+def require_agency(request: Request, session: Session = Depends(get_session)):
+    """FastAPI dependency: returns the logged-in `AgentProfile` or raises 401."""
     payload = _get_session_payload(request)
     if payload is None or payload["account_type"] != "agency":
         raise HTTPException(401, "not logged in")
@@ -118,15 +110,8 @@ def require_agency(request, session=None):
     return agent
 
 
-def require_admin(request, session=None):
+def require_admin(request: Request, session: Session = Depends(get_session)):
     """FastAPI dependency: returns the logged-in `AdminAccount` or raises 401."""
-    from fastapi import HTTPException
-
-    from ..models import AdminAccount
-
-    if session is None:
-        raise RuntimeError("require_admin must be called with an explicit session in tests")
-
     payload = _get_session_payload(request)
     if payload is None or payload["account_type"] != "admin":
         raise HTTPException(401, "not logged in")

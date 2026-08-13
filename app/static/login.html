@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sign in — Property Content Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center">
+  <form id="login-form" class="bg-slate-900 border border-slate-800 rounded-2xl p-8 w-full max-w-sm space-y-4">
+    <h1 class="text-xl font-semibold">Sign in</h1>
+    <div id="login-error" class="text-red-400 text-sm hidden"></div>
+    <div>
+      <label class="block text-sm text-slate-400 mb-1" for="email">Email</label>
+      <input id="email" name="email" type="email" required
+        class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm" />
+    </div>
+    <div>
+      <label class="block text-sm text-slate-400 mb-1" for="password">Password</label>
+      <input id="password" name="password" type="password" required
+        class="w-full rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm" />
+    </div>
+    <button type="submit"
+      class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 transition-colors duration-150 px-3 py-2 text-sm font-medium">
+      Sign in
+    </button>
+  </form>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const errorBox = document.getElementById('login-error');
+      errorBox.classList.add('hidden');
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const resp = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!resp.ok) {
+        errorBox.textContent = 'Incorrect email or password.';
+        errorBox.classList.remove('hidden');
+        return;
+      }
+      const data = await resp.json();
+      window.location.href = data.redirect;
+    });
+  </script>
+</body>
+</html>
