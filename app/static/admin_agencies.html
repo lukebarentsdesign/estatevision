@@ -31,6 +31,12 @@
   </div>
 
   <script>
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
     async function loadAgencies() {
       const resp = await fetch('/api/admin/agencies');
       const agencies = await resp.json();
@@ -38,8 +44,8 @@
       list.innerHTML = agencies.map(a => `
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
           <div>
-            <div class="font-medium">${a.agency_name}</div>
-            <div class="text-sm text-slate-400">${a.email}</div>
+            <div class="font-medium">${escapeHtml(a.agency_name)}</div>
+            <div class="text-sm text-slate-400">${escapeHtml(a.email)}</div>
           </div>
           <div class="flex gap-2 items-center">
             <span class="text-xs ${a.is_active ? 'text-emerald-400' : 'text-red-400'}">${a.is_active ? 'active' : 'inactive'}</span>
