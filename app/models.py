@@ -30,6 +30,13 @@ class JobStatus(str, Enum):
 class AgentProfile(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     agency_name: str
+
+    # Login identity (spec: agency/admin auth design, 2026-08-13). One shared
+    # login per agency -- not per staff member.
+    email: str = Field(default="", index=True, unique=True)
+    password_hash: str = Field(default="")
+    is_active: bool = True
+
     primary_color: str = "#111827"
     secondary_color: str = "#6b7280"
     logo_path: Optional[str] = None
@@ -158,3 +165,15 @@ class ActiveVendorChoice(SQLModel, table=True):
     category_key: str = Field(index=True, unique=True)
     vendor_slug: str
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AdminAccount(SQLModel, table=True):
+    """The platform owner's login (spec: agency/admin auth design,
+    2026-08-13). Modeled as a table rather than an env-var credential so it
+    can be changed without a redeploy; a single row is expected in practice.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True, unique=True)
+    password_hash: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
