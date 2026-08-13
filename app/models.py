@@ -33,7 +33,7 @@ class AgentProfile(SQLModel, table=True):
 
     # Login identity (spec: agency/admin auth design, 2026-08-13). One shared
     # login per agency -- not per staff member.
-    email: str = Field(default="", index=True, unique=True)
+    email: Optional[str] = Field(default=None, index=True, unique=True)
     password_hash: str = Field(default="")
     is_active: bool = True
 
