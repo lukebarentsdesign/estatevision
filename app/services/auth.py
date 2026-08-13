@@ -11,6 +11,8 @@ re-issuing).
 from __future__ import annotations
 
 import os
+import secrets
+import stat
 from pathlib import Path
 from typing import Literal, Optional, TypedDict
 
@@ -47,11 +49,13 @@ def _load_or_create_key(key_path: Path) -> bytes:
     if key_path.exists():
         return key_path.read_bytes()
 
-    import secrets
-
     key = secrets.token_bytes(32)
     key_path.parent.mkdir(parents=True, exist_ok=True)
     key_path.write_bytes(key)
+    try:
+        os.chmod(key_path, stat.S_IRUSR | stat.S_IWUSR)  # 0600; best-effort on Windows
+    except OSError:
+        pass
     return key
 
 
