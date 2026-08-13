@@ -552,22 +552,26 @@
         return;
       }
 
-      // Segment reordering via drag is deliberately not wired up: the
-      // backend has no order_index uniqueness constraint, and a naive
-      // "PUT the target row's current index" reorder can produce duplicate
-      // order_index values across segments with no renumbering -- leaving
-      // ordering ambiguous on reload. Reorder is out of scope for this
-      // release; only photo-onto-segment dragging is enabled below.
+      // Segment rows are draggable for reordering (drag the row itself, not
+      // the photo drop-zone -- that zone has its own separate ondragover/
+      // ondrop for photo assignment, distinguished in onSegmentDrop below
+      // by checking event.dataTransfer's drag type). Reordering renumbers
+      // EVERY segment sequentially (see reorderSegments()) rather than just
+      // PUTting the moved segment's order_index to the target's current
+      // index -- the latter can leave two segments sharing one order_index
+      // with no stable resulting order, which is the bug this replaced.
       list.innerHTML = arrangeState.segments.map((s, i) => `
-        <div id="ws-segment-row-${s.id}" class="bg-slate-950 border ${s.is_intro ? 'border-indigo-600' : 'border-slate-800'} rounded-xl p-3 flex gap-3 items-start">
-          <div class="text-[10px] text-slate-500 pt-2 w-4">${i + 1}</div>
+        <div id="ws-segment-row-${s.id}" class="bg-slate-950 border ${s.is_intro ? 'border-indigo-600' : 'border-slate-800'} rounded-xl p-3 flex gap-3 items-start"
+          ${s.is_intro ? '' : `draggable="true" ondragstart="onSegmentDragStart(event, ${s.id})"`}
+          ondragover="event.preventDefault()" ondrop="onSegmentDrop(event, ${s.id})">
+          <div class="text-[10px] text-slate-500 pt-2 w-4 ${s.is_intro ? '' : 'cursor-grab'}" title="${s.is_intro ? '' : 'Drag to reorder'}">${s.is_intro ? '' : '⠿ '}${i + 1}</div>
           <div class="flex-1">
             ${s.is_intro ? '<div class="text-[9px] uppercase tracking-wide text-indigo-400 font-bold mb-1">Intro</div>' : ''}
             <textarea rows="2" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
               onblur="saveSegmentText(${s.id}, this.value)">${escapeHtml(s.text)}</textarea>
           </div>
           <div id="ws-segment-photo-${s.id}" class="w-14 h-14 rounded-lg border-2 ${s.photo_id ? 'border-solid border-slate-700' : 'border-dashed border-slate-600'} flex items-center justify-center text-[8px] text-slate-500 flex-shrink-0 text-center"
-            ondragover="event.preventDefault()" ondrop="onPhotoDropOnSegment(event, ${s.id})">
+            ondragover="event.preventDefault(); event.stopPropagation()" ondrop="onPhotoDropOnSegment(event, ${s.id})">
             ${s.photo_id ? 'Photo #' + s.photo_id : 'drop photo'}
           </div>
           <button onclick="deleteSegment(${s.id})" class="text-slate-600 hover:text-rose-400 text-xs pt-2">✕</button>
@@ -654,6 +658,60 @@
         zone.classList.remove('border-dashed', 'border-slate-600');
         zone.classList.add('border-solid', 'border-slate-700');
       }
+    }
+
+    let draggedSegmentId = null;
+
+    function onSegmentDragStart(event, segmentId) {
+      draggedSegmentId = segmentId;
+    }
+
+    async function onSegmentDrop(event, targetSegmentId) {
+      event.preventDefault();
+      const movedId = draggedSegmentId;
+      draggedSegmentId = null;
+      if (movedId == null || movedId === targetSegmentId) return;
+
+      const fromIndex = arrangeState.segments.findIndex(s => s.id === movedId);
+      const toIndex = arrangeState.segments.findIndex(s => s.id === targetSegmentId);
+      if (fromIndex === -1 || toIndex === -1) return;
+
+      // The intro segment isn't draggable (its "Intro" role is a stored
+      // flag, not just "whichever segment is first" -- moving it away from
+      // the top would leave the badge floating mid-list with no actual
+      // effect on which segment HeyGen voices), but its row still accepts
+      // drops so other segments can be reordered around it. Block dropping
+      // ONTO it, since inserting above the intro would visually displace it
+      // from position 0 even though its is_intro flag doesn't move.
+      if (arrangeState.segments[toIndex].is_intro) return;
+
+      // Reorder the local array first (move the dragged segment to sit
+      // just before its drop target), then renumber every segment
+      // sequentially from that new order and persist all of them. This
+      // avoids the original bug: PUTting only the moved segment's
+      // order_index to the target's *current* index left two segments
+      // sharing one order_index, since nothing renumbered the rest.
+      const reordered = arrangeState.segments.slice();
+      const [moved] = reordered.splice(fromIndex, 1);
+      reordered.splice(toIndex, 0, moved);
+
+      await reorderSegments(reordered);
+    }
+
+    async function reorderSegments(newOrder) {
+      const results = await Promise.all(
+        newOrder.map((s, i) =>
+          fetch(`/api/segments/${s.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_index: i })
+          })
+        )
+      );
+      if (results.some(r => !r.ok)) {
+        alert('Could not save the new sentence order.');
+      }
+      loadSegments();
     }
 
     function renderAvatarToggle(job) {
