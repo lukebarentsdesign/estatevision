@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agencies — Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-8">
+  <div class="max-w-3xl mx-auto space-y-6">
+    <h1 class="text-2xl font-semibold">Agencies</h1>
+
+    <form id="create-form" class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Agency name</label>
+        <input id="new-name" required class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Email</label>
+        <input id="new-email" type="email" required class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Initial password</label>
+        <input id="new-password" type="text" required class="rounded-lg bg-slate-950 border border-slate-800 px-3 py-2 text-sm" />
+      </div>
+      <button type="submit" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 transition-colors duration-150 px-4 py-2 text-sm font-medium">
+        Create agency
+      </button>
+    </form>
+
+    <div id="agency-list" class="space-y-2"></div>
+  </div>
+
+  <script>
+    async function loadAgencies() {
+      const resp = await fetch('/api/admin/agencies');
+      const agencies = await resp.json();
+      const list = document.getElementById('agency-list');
+      list.innerHTML = agencies.map(a => `
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div class="font-medium">${a.agency_name}</div>
+            <div class="text-sm text-slate-400">${a.email}</div>
+          </div>
+          <div class="flex gap-2 items-center">
+            <span class="text-xs ${a.is_active ? 'text-emerald-400' : 'text-red-400'}">${a.is_active ? 'active' : 'inactive'}</span>
+            <button onclick="toggleActive(${a.id}, ${!a.is_active})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
+              ${a.is_active ? 'Deactivate' : 'Reactivate'}
+            </button>
+            <button onclick="resetPassword(${a.id})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
+              Reset password
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function toggleActive(id, newState) {
+      await fetch(`/api/admin/agencies/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newState }),
+      });
+      loadAgencies();
+    }
+
+    async function resetPassword(id) {
+      const newPassword = prompt('New password for this agency:');
+      if (!newPassword) return;
+      await fetch(`/api/admin/agencies/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_password: newPassword }),
+      });
+      alert('Password updated. Share it with the agency directly.');
+    }
+
+    document.getElementById('create-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const agency_name = document.getElementById('new-name').value;
+      const email = document.getElementById('new-email').value;
+      const password = document.getElementById('new-password').value;
+      const resp = await fetch('/api/admin/agencies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agency_name, email, password }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert(err.detail || 'Could not create agency.');
+        return;
+      }
+      document.getElementById('create-form').reset();
+      loadAgencies();
+    });
+
+    loadAgencies();
+  </script>
+</body>
+</html>

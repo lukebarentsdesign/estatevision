@@ -99,6 +99,82 @@ def logout(response: Response) -> dict:
     return {"logged_out": True}
 
 
+class CreateAgencyRequest(BaseModel):
+    agency_name: str
+    email: str
+    password: str
+
+
+class UpdateAgencyRequest(BaseModel):
+    is_active: Optional[bool] = None
+    new_password: Optional[str] = None
+
+
+def _serialize_agency(agent: AgentProfile) -> dict:
+    return {
+        "id": agent.id,
+        "agency_name": agent.agency_name,
+        "email": agent.email,
+        "is_active": agent.is_active,
+    }
+
+
+@app.get("/admin/agencies")
+def admin_agencies_page(admin: AdminAccount = Depends(require_admin)) -> FileResponse:
+    return FileResponse(_STATIC_DIR / "admin_agencies.html")
+
+
+@app.get("/api/admin/agencies")
+def list_admin_agencies(
+    admin: AdminAccount = Depends(require_admin), session: Session = Depends(get_session)
+) -> list[dict]:
+    agencies = session.exec(select(AgentProfile)).all()
+    return [_serialize_agency(a) for a in agencies]
+
+
+@app.post("/api/admin/agencies", status_code=201)
+def create_admin_agency(
+    body: CreateAgencyRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    existing = session.exec(select(AgentProfile).where(AgentProfile.email == body.email)).first()
+    if existing is not None:
+        raise HTTPException(400, f"an agency with email {body.email!r} already exists")
+
+    agent = AgentProfile(
+        agency_name=body.agency_name,
+        email=body.email,
+        password_hash=hash_password(body.password),
+    )
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return _serialize_agency(agent)
+
+
+@app.patch("/api/admin/agencies/{agency_id}")
+def update_admin_agency(
+    agency_id: int,
+    body: UpdateAgencyRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    agent = session.get(AgentProfile, agency_id)
+    if agent is None:
+        raise HTTPException(404, "agency not found")
+
+    if body.is_active is not None:
+        agent.is_active = body.is_active
+    if body.new_password is not None:
+        agent.password_hash = hash_password(body.new_password)
+
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return _serialize_agency(agent)
+
+
 @app.get("/api/agents")
 def list_agents(session: Session = Depends(get_session)) -> list[AgentProfile]:
     return session.exec(select(AgentProfile)).all()
