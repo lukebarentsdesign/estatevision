@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
-from .models import AdminAccount, AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment
+from .models import AdminAccount, AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment, StaffMember
 from .pipeline.contract import JobContext, assert_transition
 from .pipeline.registry import build_job_snapshot, build_runner
 from .services import uk_location
@@ -33,6 +33,7 @@ from .services.auth import (
     verify_password,
 )
 from .services.compliance import assert_price_free
+from .services.consent import ConsentError, set_elevenlabs_voice_for_staff
 from .services.integration_registry import list_integrations
 from .services.integration_settings import IntegrationSettings
 from .services.integration_test_connection import test_connection
@@ -112,6 +113,8 @@ class CreateAgencyRequest(BaseModel):
 class UpdateAgencyRequest(BaseModel):
     is_active: Optional[bool] = None
     new_password: Optional[str] = None
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
 
 
 def _serialize_agency(agent: AgentProfile) -> dict:
@@ -120,6 +123,8 @@ def _serialize_agency(agent: AgentProfile) -> dict:
         "agency_name": agent.agency_name,
         "email": agent.email,
         "is_active": agent.is_active,
+        "primary_color": agent.primary_color,
+        "secondary_color": agent.secondary_color,
     }
 
 
@@ -172,11 +177,127 @@ def update_admin_agency(
         agent.is_active = body.is_active
     if body.new_password is not None:
         agent.password_hash = hash_password(body.new_password)
+    if body.primary_color is not None:
+        agent.primary_color = body.primary_color
+    if body.secondary_color is not None:
+        agent.secondary_color = body.secondary_color
 
     session.add(agent)
     session.commit()
     session.refresh(agent)
     return _serialize_agency(agent)
+
+
+class CreateStaffRequest(BaseModel):
+    staff_name: str
+
+
+class UpdateStaffRequest(BaseModel):
+    staff_name: Optional[str] = None
+    heygen_avatar_id: Optional[str] = None
+    elevenlabs_voice_id: Optional[str] = None
+    voice_consent_confirmed: Optional[bool] = None
+
+
+_MAX_STAFF_PER_AGENCY = 5
+
+
+def _serialize_staff(staff: StaffMember) -> dict:
+    return {
+        "id": staff.id,
+        "agent_id": staff.agent_id,
+        "staff_name": staff.staff_name,
+        "heygen_avatar_id": staff.heygen_avatar_id,
+        "elevenlabs_voice_id": staff.elevenlabs_voice_id,
+        "voice_consent_confirmed": staff.voice_consent_confirmed,
+    }
+
+
+@app.get("/api/admin/agencies/{agency_id}/staff")
+def list_agency_staff(
+    agency_id: int,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    agent = session.get(AgentProfile, agency_id)
+    if agent is None:
+        raise HTTPException(404, "agency not found")
+    staff = session.exec(
+        select(StaffMember).where(StaffMember.agent_id == agency_id).order_by(StaffMember.id)
+    ).all()
+    return [_serialize_staff(s) for s in staff]
+
+
+@app.post("/api/admin/agencies/{agency_id}/staff", status_code=201)
+def create_agency_staff(
+    agency_id: int,
+    body: CreateStaffRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    agent = session.get(AgentProfile, agency_id)
+    if agent is None:
+        raise HTTPException(404, "agency not found")
+
+    existing_count = len(
+        session.exec(select(StaffMember).where(StaffMember.agent_id == agency_id)).all()
+    )
+    if existing_count >= _MAX_STAFF_PER_AGENCY:
+        raise HTTPException(
+            400, f"agency already has the maximum of {_MAX_STAFF_PER_AGENCY} staff members"
+        )
+
+    staff = StaffMember(agent_id=agency_id, staff_name=body.staff_name)
+    session.add(staff)
+    session.commit()
+    session.refresh(staff)
+    return _serialize_staff(staff)
+
+
+@app.patch("/api/admin/agencies/{agency_id}/staff/{staff_id}")
+def update_agency_staff(
+    agency_id: int,
+    staff_id: int,
+    body: UpdateStaffRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    staff = session.get(StaffMember, staff_id)
+    if staff is None or staff.agent_id != agency_id:
+        raise HTTPException(404, "staff member not found")
+
+    if body.staff_name is not None:
+        staff.staff_name = body.staff_name
+    if body.heygen_avatar_id is not None:
+        staff.heygen_avatar_id = body.heygen_avatar_id
+
+    if body.elevenlabs_voice_id is not None:
+        try:
+            set_elevenlabs_voice_for_staff(
+                staff, body.elevenlabs_voice_id, consent_confirmed=bool(body.voice_consent_confirmed)
+            )
+        except ConsentError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    session.add(staff)
+    session.commit()
+    session.refresh(staff)
+    return _serialize_staff(staff)
+
+
+@app.delete("/api/admin/agencies/{agency_id}/staff/{staff_id}")
+def delete_agency_staff(
+    agency_id: int,
+    staff_id: int,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    staff = session.get(StaffMember, staff_id)
+    if staff is None or staff.agent_id != agency_id:
+        raise HTTPException(404, "staff member not found")
+    session.delete(staff)
+    session.commit()
+    return {"deleted": True}
 
 
 @app.get("/api/jobs")

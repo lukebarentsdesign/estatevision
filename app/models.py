@@ -40,6 +40,12 @@ class AgentProfile(SQLModel, table=True):
     primary_color: str = "#111827"
     secondary_color: str = "#6b7280"
     logo_path: Optional[str] = None
+
+    # Legacy single-presenter fields (staff members phase 1 design,
+    # 2026-08-13). Superseded in intent by StaffMember, which supports up to
+    # 5 presenters per agency -- but the pipeline still reads these directly
+    # and hasn't been rewired to StaffMember yet (that's phase 2). Do not
+    # remove until phase 2 lands.
     staff_name: Optional[str] = None
     staff_headshot_path: Optional[str] = None
 
@@ -176,4 +182,29 @@ class AdminAccount(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
     password_hash: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class StaffMember(SQLModel, table=True):
+    """One agency staff member's presenter identity: their own HeyGen avatar
+    and ElevenLabs voice, reused across every property job they present
+    (spec: staff members phase 1 design, 2026-08-13).
+
+    Consent is tracked per staff member, not per agency, since it concerns a
+    specific person's cloned voice -- see `services.consent`'s StaffMember-
+    facing functions, which are the only sanctioned way to set
+    `elevenlabs_voice_id`.
+
+    Capped at 5 rows per `agent_id`, enforced by the API layer (not a DB
+    constraint -- SQLite has no portable per-group row-count check).
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    agent_id: int = Field(foreign_key="agentprofile.id")
+
+    staff_name: str
+    heygen_avatar_id: Optional[str] = None
+    elevenlabs_voice_id: Optional[str] = None
+    voice_consent_confirmed: bool = False
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

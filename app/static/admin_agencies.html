@@ -37,27 +37,154 @@
       return div.innerHTML;
     }
 
+    let expandedAgencyId = null;
+
     async function loadAgencies() {
       const resp = await fetch('/api/admin/agencies');
       const agencies = await resp.json();
       const list = document.getElementById('agency-list');
-      list.innerHTML = agencies.map(a => `
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+      list.innerHTML = (await Promise.all(agencies.map(renderAgencyCard))).join('');
+    }
+
+    async function renderAgencyCard(a) {
+      const isExpanded = expandedAgencyId === a.id;
+      const staffHtml = isExpanded ? await renderStaffSection(a.id) : '';
+      return `
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-medium">${escapeHtml(a.agency_name)}</div>
+              <div class="text-sm text-slate-400">${escapeHtml(a.email)}</div>
+            </div>
+            <div class="flex gap-2 items-center">
+              <span class="text-xs ${a.is_active ? 'text-emerald-400' : 'text-red-400'}">${a.is_active ? 'active' : 'inactive'}</span>
+              <button onclick="toggleActive(${a.id}, ${!a.is_active})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
+                ${a.is_active ? 'Deactivate' : 'Reactivate'}
+              </button>
+              <button onclick="resetPassword(${a.id})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
+                Reset password
+              </button>
+              <button onclick="toggleExpanded(${a.id})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
+                ${isExpanded ? 'Hide details' : 'Manage'}
+              </button>
+            </div>
+          </div>
+          ${isExpanded ? `
+            <div class="border-t border-slate-800 pt-3 space-y-4">
+              <div class="flex gap-3 items-end">
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">Primary color</label>
+                  <input type="color" id="color-primary-${a.id}" value="${escapeHtml(a.primary_color)}" class="rounded-lg bg-slate-950 border border-slate-800 h-9 w-14" />
+                </div>
+                <div>
+                  <label class="block text-xs text-slate-400 mb-1">Secondary color</label>
+                  <input type="color" id="color-secondary-${a.id}" value="${escapeHtml(a.secondary_color)}" class="rounded-lg bg-slate-950 border border-slate-800 h-9 w-14" />
+                </div>
+                <button onclick="saveColors(${a.id})" class="text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 transition-colors duration-150 px-3 py-2 font-medium">
+                  Save colors
+                </button>
+              </div>
+              ${staffHtml}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    async function renderStaffSection(agencyId) {
+      const resp = await fetch(`/api/admin/agencies/${agencyId}/staff`);
+      const staff = await resp.json();
+      const rows = staff.map(s => `
+        <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 flex flex-wrap gap-2 items-end">
           <div>
-            <div class="font-medium">${escapeHtml(a.agency_name)}</div>
-            <div class="text-sm text-slate-400">${escapeHtml(a.email)}</div>
+            <label class="block text-xs text-slate-400 mb-1">Name</label>
+            <input value="${escapeHtml(s.staff_name)}" id="staff-name-${s.id}" class="rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-sm w-32" />
           </div>
-          <div class="flex gap-2 items-center">
-            <span class="text-xs ${a.is_active ? 'text-emerald-400' : 'text-red-400'}">${a.is_active ? 'active' : 'inactive'}</span>
-            <button onclick="toggleActive(${a.id}, ${!a.is_active})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
-              ${a.is_active ? 'Deactivate' : 'Reactivate'}
-            </button>
-            <button onclick="resetPassword(${a.id})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
-              Reset password
-            </button>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">HeyGen avatar ID</label>
+            <input value="${escapeHtml(s.heygen_avatar_id || '')}" id="staff-avatar-${s.id}" class="rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-sm w-40" />
           </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">ElevenLabs voice ID</label>
+            <input value="${escapeHtml(s.elevenlabs_voice_id || '')}" id="staff-voice-${s.id}" class="rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-sm w-40" />
+          </div>
+          <label class="flex items-center gap-1 text-xs text-slate-400">
+            <input type="checkbox" id="staff-consent-${s.id}" ${s.voice_consent_confirmed ? 'checked' : ''} />
+            Voice consent confirmed
+          </label>
+          <button onclick="saveStaff(${agencyId}, ${s.id})" class="text-xs rounded-lg border border-slate-700 px-2 py-1 hover:bg-slate-800 transition-colors duration-150">
+            Save
+          </button>
+          <button onclick="deleteStaff(${agencyId}, ${s.id})" class="text-xs rounded-lg border border-red-900 text-red-400 px-2 py-1 hover:bg-red-950 transition-colors duration-150">
+            Remove
+          </button>
         </div>
       `).join('');
+      const addDisabled = staff.length >= 5;
+      return `
+        <div class="space-y-2">
+          <div class="text-xs text-slate-400 uppercase tracking-wide">Staff (${staff.length}/5)</div>
+          ${rows}
+          <button onclick="addStaff(${agencyId})" ${addDisabled ? 'disabled' : ''} class="text-xs rounded-lg border border-slate-700 px-2 py-1 ${addDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800'} transition-colors duration-150">
+            + Add staff member
+          </button>
+        </div>
+      `;
+    }
+
+    function toggleExpanded(id) {
+      expandedAgencyId = expandedAgencyId === id ? null : id;
+      loadAgencies();
+    }
+
+    async function saveColors(id) {
+      const primary_color = document.getElementById(`color-primary-${id}`).value;
+      const secondary_color = document.getElementById(`color-secondary-${id}`).value;
+      await fetch(`/api/admin/agencies/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primary_color, secondary_color }),
+      });
+      loadAgencies();
+    }
+
+    async function addStaff(agencyId) {
+      const staff_name = prompt('New staff member name:');
+      if (!staff_name) return;
+      const resp = await fetch(`/api/admin/agencies/${agencyId}/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff_name }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert(err.detail || 'Could not add staff member.');
+        return;
+      }
+      loadAgencies();
+    }
+
+    async function saveStaff(agencyId, staffId) {
+      const staff_name = document.getElementById(`staff-name-${staffId}`).value;
+      const heygen_avatar_id = document.getElementById(`staff-avatar-${staffId}`).value || null;
+      const elevenlabs_voice_id = document.getElementById(`staff-voice-${staffId}`).value || null;
+      const voice_consent_confirmed = document.getElementById(`staff-consent-${staffId}`).checked;
+      const resp = await fetch(`/api/admin/agencies/${agencyId}/staff/${staffId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff_name, heygen_avatar_id, elevenlabs_voice_id, voice_consent_confirmed }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert(err.detail || 'Could not save staff member.');
+        return;
+      }
+      loadAgencies();
+    }
+
+    async function deleteStaff(agencyId, staffId) {
+      await fetch(`/api/admin/agencies/${agencyId}/staff/${staffId}`, { method: 'DELETE' });
+      loadAgencies();
     }
 
     async function toggleActive(id, newState) {
