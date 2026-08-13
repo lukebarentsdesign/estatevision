@@ -18,8 +18,8 @@ def test_avatar_and_tts_and_hero_shot_categories_have_expected_members() -> None
     assert by_category["hero_shot_animation"] == ["gemini_omni"]
     assert by_category["script_generation"] == ["openai"]
     assert by_category["aerial_flyover"] == ["google_3d_tiles"]
-    assert by_category["schools_data"] == ["schools_api"]
-    assert by_category["broadband_data"] == ["ofcom_broadband"]
+    assert "schools_data" not in by_category
+    assert "broadband_data" not in by_category
 
 
 def test_openai_compatible_presets_exist() -> None:

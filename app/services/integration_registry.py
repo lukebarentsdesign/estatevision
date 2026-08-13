@@ -128,35 +128,6 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         test_mode=ConnectionTestMode.FORMAT_ONLY,
         used_by=("aerial_flyover pipeline step",),
     ),
-    IntegrationDefinition(
-        slug="schools_api",
-        name="DfE / Ofsted Schools API",
-        category="Location Data",
-        category_key="schools_data",
-        description="Nearest Outstanding/Good schools for the location insights panel (§5.1).",
-        fields=(
-            CredentialField("api_key", "API Key", FieldKind.API_KEY, required=False,
-                             help_text="Leave blank if using the public endpoint without a key."),
-            CredentialField("base_url", "API Base URL", FieldKind.BASE_URL, required=False,
-                             placeholder="https://get-information-schools.service.gov.uk/api"),
-        ),
-        test_mode=ConnectionTestMode.FORMAT_ONLY,
-        used_by=("services.uk_location.get_nearby_schools",),
-    ),
-    IntegrationDefinition(
-        slug="ofcom_broadband",
-        name="Ofcom Broadband Checker",
-        category="Location Data",
-        category_key="broadband_data",
-        description="Broadband/mobile coverage for the location insights panel (§5.3).",
-        fields=(
-            CredentialField("api_key", "API Key", FieldKind.API_KEY, required=False),
-            CredentialField("base_url", "API Base URL", FieldKind.BASE_URL, required=False,
-                             placeholder="https://api.checker.ofcom.org.uk"),
-        ),
-        test_mode=ConnectionTestMode.FORMAT_ONLY,
-        used_by=("services.uk_location.get_broadband_info",),
-    ),
 )
 
 # Known OpenAI-compatible chat-completions endpoints, offered as quick-fill
