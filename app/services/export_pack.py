@@ -32,17 +32,10 @@ def generate_microsite_html(
 ) -> str:
     """Renders a responsive, standalone HTML property landing page with inline Tailwind CSS."""
     location_data = location_data or {}
-    schools = location_data.get("schools", [])
     amenities = location_data.get("amenities", [])
-    broadband = location_data.get("broadband", {})
-    daylight = location_data.get("daylight_statement", "")
+    daylight = (location_data.get("daylight") or {}).get("statement", "")
     photos = photos or []
     video_9x16_urls = video_9x16_urls or []
-
-    schools_html = "".join(
-        f'<li class="py-2 border-b border-slate-700 flex justify-between"><span class="font-medium text-slate-200">{s.get("name")} ({s.get("phase","")})</span><span class="text-emerald-400 text-sm font-semibold">{s.get("rating","")} • {s.get("distance_miles",0):.1f} mi</span></li>'
-        for s in schools[:3]
-    ) or '<li class="py-2 text-slate-400">Local school data available on request.</li>'
 
     amenities_html = "".join(
         f'<span class="bg-slate-800 text-slate-300 text-xs px-3 py-1.5 rounded-full border border-slate-700">{a.get("name")} ({a.get("type","")})</span>'
@@ -99,28 +92,11 @@ def generate_microsite_html(
     ''' if video_16x9_url else ''}
 
     <!-- Overview & Script -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-      <div class="md:col-span-2 bg-slate-900/60 border border-slate-800 p-8 rounded-2xl">
+    <div class="grid grid-cols-1 gap-8 mb-16">
+      <div class="bg-slate-900/60 border border-slate-800 p-8 rounded-2xl">
         <h2 class="text-2xl font-bold text-white mb-4">Property Highlights</h2>
         <p class="text-slate-300 leading-relaxed whitespace-pre-line">{script_summary or 'Stunning property with premium features throughout.'}</p>
         {f'<p class="mt-4 text-sm text-indigo-400 font-medium">☀️ {daylight}</p>' if daylight else ''}
-      </div>
-
-      <!-- Location Card -->
-      <div class="bg-slate-900/60 border border-slate-800 p-6 rounded-2xl flex flex-col justify-between">
-        <div>
-          <h3 class="text-lg font-semibold text-white mb-4">Connectivity & Schools</h3>
-          <div class="mb-6">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Broadband Speed</h4>
-            <p class="text-sm text-emerald-400 font-medium">{broadband.get('max_download_speed', 'Ultrafast FTTP')} Available</p>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Top Nearby Schools</h4>
-            <ul class="text-sm">
-              {schools_html}
-            </ul>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -205,9 +181,9 @@ def generate_social_calendar_md(address: str, postcode: str, price_guide: str, s
 
 ### 📅 Day 4 — Local Area & Lifestyle Spotlight
 - **Platform:** Instagram Post / Carousel
-- **Asset:** Photos & School/Connectivity Infographic
+- **Asset:** Photos & Connectivity Infographic
 - **Caption:**
-  "Location matters! 📍 Excellent schools and transport links right on your doorstep in {postcode}. Slide to explore the neighbourhood!"
+  "Location matters! 📍 Great transport links and local amenities right on your doorstep in {postcode}. Slide to explore the neighbourhood!"
 
 ---
 
