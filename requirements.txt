@@ -22,3 +22,8 @@ python-multipart>=0.0.12
 # Dev
 pytest>=8.3
 reportlab>=4.2  # test fixtures only (PDF generation)
+
+# Auth
+passlib[bcrypt]>=1.7
+bcrypt<4.1  # passlib 1.7.4's bcrypt backend self-test breaks on bcrypt>=4.1 (no __about__.__version__)
+itsdangerous>=2.2

@@ -233,7 +233,7 @@ uvicorn app.main:app --reload        # backend — creates property_studio.db on
 cd remotion && npm run dev           # Remotion Studio — preview compositions interactively
 ```
 
-Endpoints: `GET/POST /api/agents`, `GET/POST /api/jobs`,
+Endpoints: `GET/POST /api/admin/agencies` (admin-auth), `GET/POST /api/jobs`,
 `POST /api/jobs/{id}/location` (§5 aggregator), `POST /api/jobs/{id}/run`
 (runs every applicable pipeline step for the job's feature level),
 `GET /api/integrations`, `PUT/DELETE /api/integrations/{slug}/fields/{key}`,

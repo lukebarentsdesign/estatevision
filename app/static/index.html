@@ -341,40 +341,24 @@
     }
 
     async function loadAgents() {
-      const res = await fetch('/api/agents');
-      const agents = await res.json();
+      // NOTE: the old unauthenticated GET/POST /api/agents endpoints were removed
+      // (they leaked every agency's email + password_hash with no auth check).
+      // Agent/agency profile management now lives behind admin auth at
+      // /admin/agencies. This tab has no replacement UI yet — see TODO below.
       const grid = document.getElementById('agents-grid');
-      grid.innerHTML = '';
-
-      const select = document.getElementById('mj-agent-id');
-      select.innerHTML = '<option value="">-- Select Agent Profile --</option>';
-
-      agents.forEach(a => {
-        const opt = document.createElement('option');
-        opt.value = a.id;
-        opt.innerText = `${a.agency_name} (${a.staff_name || 'Team'})`;
-        select.appendChild(opt);
-
-        const card = document.createElement('div');
-        card.className = 'bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3';
-        card.innerHTML = `
-          <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white" style="background-color: ${a.primary_color}">
-              ${a.agency_name ? a.agency_name[0] : 'A'}
-            </div>
-            <div>
-              <h3 class="font-bold text-white text-base">${a.agency_name}</h3>
-              <p class="text-xs text-slate-400">${a.staff_name || 'No staff assigned'}</p>
-            </div>
-          </div>
-          <div class="text-xs space-y-1.5 pt-2 text-slate-300">
-            <div><span class="text-slate-500">ElevenLabs Voice ID:</span> ${a.elevenlabs_voice_id || 'Not set'}</div>
-            <div><span class="text-slate-500">HeyGen Avatar ID:</span> ${a.heygen_avatar_id || 'Not set'}</div>
-            <div><span class="text-slate-500">Consent Verified (§1.3):</span> ${a.voice_consent_confirmed ? '✅ Yes' : '❌ Pending'}</div>
+      if (grid) {
+        grid.innerHTML = `
+          <div class="col-span-full text-sm text-slate-400 bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            Agent profile management has moved. Contact an administrator to manage
+            agency branding, voice, and avatar credentials via the admin panel.
           </div>
         `;
-        grid.appendChild(card);
-      });
+      }
+
+      const select = document.getElementById('mj-agent-id');
+      if (select) {
+        select.innerHTML = '<option value="">-- Uses your logged-in agency --</option>';
+      }
     }
 
     async function openWorkspace(jobId) {
@@ -849,35 +833,11 @@
     }
 
     async function submitCreateAgent() {
-      const agencyName = document.getElementById('ma-agency').value;
-      const staffName = document.getElementById('ma-staff').value;
-      const primaryColor = document.getElementById('ma-color1').value;
-      const secondaryColor = document.getElementById('ma-color2').value;
-      const voiceId = document.getElementById('ma-voice-id').value;
-      const avatarId = document.getElementById('ma-avatar-id').value;
-      const consentConfirmed = document.getElementById('ma-consent').checked;
-
-      if (!agencyName) {
-        alert('Agency Name is required');
-        return;
-      }
-
-      await fetch('/api/agents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agency_name: agencyName,
-          staff_name: staffName,
-          primary_color: primaryColor,
-          secondary_color: secondaryColor,
-          elevenlabs_voice_id: voiceId,
-          heygen_avatar_id: avatarId,
-          voice_consent_confirmed: consentConfirmed
-        })
-      });
-
+      // The endpoint this used to call (POST /api/agents) was removed as an
+      // unauthenticated credential-creation hole. There is currently no
+      // authenticated replacement for self-service agent-profile creation.
+      alert('Agent profile creation has moved to the admin panel. Please contact an administrator.');
       closeModal('modal-new-agent');
-      loadAgents();
     }
 
     // Initial load

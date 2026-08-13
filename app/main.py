@@ -13,16 +13,25 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from .db import get_session, init_db
-from .models import AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment
+from .models import AdminAccount, AgentProfile, JobStatus, Photo, PropertyJob, ScriptSegment
 from .pipeline.contract import JobContext, assert_transition
 from .pipeline.registry import build_job_snapshot, build_runner
 from .services import uk_location
+from .services.auth import (
+    SESSION_COOKIE_NAME,
+    SESSION_MAX_AGE_SECONDS,
+    encode_session_cookie,
+    hash_password,
+    require_admin,
+    require_agency,
+    verify_password,
+)
 from .services.compliance import assert_price_free
 from .services.integration_registry import list_integrations
 from .services.integration_settings import IntegrationSettings
@@ -42,43 +51,158 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @app.get("/")
-def dashboard_page() -> FileResponse:
+def dashboard_page(request: Request, session: Session = Depends(get_session)) -> Response:
+    try:
+        require_agency(request, session=session)
+    except HTTPException:
+        return RedirectResponse("/login", status_code=307)
     return FileResponse(_STATIC_DIR / "index.html")
 
 
 @app.get("/admin/integrations")
-def admin_integrations_page() -> FileResponse:
+def admin_integrations_page(admin: AdminAccount = Depends(require_admin)) -> FileResponse:
     return FileResponse(_STATIC_DIR / "admin_integrations.html")
 
 
-@app.get("/api/agents")
-def list_agents(session: Session = Depends(get_session)) -> list[AgentProfile]:
-    return session.exec(select(AgentProfile)).all()
+@app.get("/login")
+def login_page() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "login.html")
 
 
-@app.post("/api/agents", status_code=201)
-def create_agent(agent: AgentProfile, session: Session = Depends(get_session)) -> AgentProfile:
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/login")
+def login(body: LoginRequest, response: Response, session: Session = Depends(get_session)) -> dict:
+    """Tries agency lookup first, then admin -- a single login form serves
+    both account types (spec: agency/admin auth design, 2026-08-13)."""
+    agent = session.exec(select(AgentProfile).where(AgentProfile.email == body.email)).first()
+    if agent is not None and agent.is_active and verify_password(body.password, agent.password_hash):
+        token = encode_session_cookie(account_type="agency", account_id=agent.id)
+        response.set_cookie(
+            SESSION_COOKIE_NAME, token, httponly=True, max_age=SESSION_MAX_AGE_SECONDS, samesite="lax"
+        )
+        return {"account_type": "agency", "redirect": "/"}
+
+    admin = session.exec(select(AdminAccount).where(AdminAccount.email == body.email)).first()
+    if admin is not None and verify_password(body.password, admin.password_hash):
+        token = encode_session_cookie(account_type="admin", account_id=admin.id)
+        response.set_cookie(
+            SESSION_COOKIE_NAME, token, httponly=True, max_age=SESSION_MAX_AGE_SECONDS, samesite="lax"
+        )
+        return {"account_type": "admin", "redirect": "/admin/agencies"}
+
+    raise HTTPException(401, "incorrect email or password")
+
+
+@app.post("/api/logout")
+def logout(response: Response) -> dict:
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return {"logged_out": True}
+
+
+class CreateAgencyRequest(BaseModel):
+    agency_name: str
+    email: str
+    password: str
+
+
+class UpdateAgencyRequest(BaseModel):
+    is_active: Optional[bool] = None
+    new_password: Optional[str] = None
+
+
+def _serialize_agency(agent: AgentProfile) -> dict:
+    return {
+        "id": agent.id,
+        "agency_name": agent.agency_name,
+        "email": agent.email,
+        "is_active": agent.is_active,
+    }
+
+
+@app.get("/admin/agencies")
+def admin_agencies_page(admin: AdminAccount = Depends(require_admin)) -> FileResponse:
+    return FileResponse(_STATIC_DIR / "admin_agencies.html")
+
+
+@app.get("/api/admin/agencies")
+def list_admin_agencies(
+    admin: AdminAccount = Depends(require_admin), session: Session = Depends(get_session)
+) -> list[dict]:
+    agencies = session.exec(select(AgentProfile)).all()
+    return [_serialize_agency(a) for a in agencies]
+
+
+@app.post("/api/admin/agencies", status_code=201)
+def create_admin_agency(
+    body: CreateAgencyRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    existing = session.exec(select(AgentProfile).where(AgentProfile.email == body.email)).first()
+    if existing is not None:
+        raise HTTPException(400, f"an agency with email {body.email!r} already exists")
+
+    agent = AgentProfile(
+        agency_name=body.agency_name,
+        email=body.email,
+        password_hash=hash_password(body.password),
+    )
     session.add(agent)
     session.commit()
     session.refresh(agent)
-    return agent
+    return _serialize_agency(agent)
+
+
+@app.patch("/api/admin/agencies/{agency_id}")
+def update_admin_agency(
+    agency_id: int,
+    body: UpdateAgencyRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> dict:
+    agent = session.get(AgentProfile, agency_id)
+    if agent is None:
+        raise HTTPException(404, "agency not found")
+
+    if body.is_active is not None:
+        agent.is_active = body.is_active
+    if body.new_password is not None:
+        agent.password_hash = hash_password(body.new_password)
+
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    return _serialize_agency(agent)
 
 
 @app.get("/api/jobs")
-def list_jobs(session: Session = Depends(get_session)) -> list[PropertyJob]:
-    return session.exec(select(PropertyJob)).all()
+def list_jobs(
+    agency: AgentProfile = Depends(require_agency), session: Session = Depends(get_session)
+) -> list[PropertyJob]:
+    return session.exec(select(PropertyJob).where(PropertyJob.agent_id == agency.id)).all()
 
 
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: int, session: Session = Depends(get_session)) -> PropertyJob:
+def get_job(
+    job_id: int, agency: AgentProfile = Depends(require_agency), session: Session = Depends(get_session)
+) -> PropertyJob:
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
     return job
 
 
 @app.post("/api/jobs", status_code=201)
-def create_job(job: PropertyJob, session: Session = Depends(get_session)) -> PropertyJob:
+def create_job(
+    job: PropertyJob,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
+) -> PropertyJob:
+    job.agent_id = agency.id
     session.add(job)
     session.commit()
     session.refresh(job)
@@ -112,10 +236,13 @@ async def _read_capped(upload: UploadFile, *, context: str) -> bytes:
 
 @app.post("/api/jobs/{job_id}/brochure")
 async def upload_brochure(
-    job_id: int, file: UploadFile = File(...), session: Session = Depends(get_session)
+    job_id: int,
+    file: UploadFile = File(...),
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
 ) -> dict:
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
     if file.content_type != "application/pdf" and not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "brochure must be a PDF file")
@@ -133,10 +260,13 @@ async def upload_brochure(
 
 @app.post("/api/jobs/{job_id}/photos", status_code=201)
 async def upload_photos(
-    job_id: int, files: list[UploadFile] = File(...), session: Session = Depends(get_session)
+    job_id: int,
+    files: list[UploadFile] = File(...),
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
 ) -> list[Photo]:
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
 
     for upload in files:
@@ -174,9 +304,11 @@ async def upload_photos(
 
 
 @app.get("/api/jobs/{job_id}/photos")
-def list_job_photos(job_id: int, session: Session = Depends(get_session)) -> list[Photo]:
+def list_job_photos(
+    job_id: int, agency: AgentProfile = Depends(require_agency), session: Session = Depends(get_session)
+) -> list[Photo]:
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
     return session.exec(
         select(Photo).where(Photo.job_id == job_id).order_by(Photo.order_index)
@@ -208,19 +340,24 @@ def _serialize_segment(segment: ScriptSegment) -> dict:
 
 
 @app.get("/api/jobs/{job_id}/segments")
-def list_job_segments(job_id: int, session: Session = Depends(get_session)) -> list[dict]:
+def list_job_segments(
+    job_id: int, agency: AgentProfile = Depends(require_agency), session: Session = Depends(get_session)
+) -> list[dict]:
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
     return [_serialize_segment(s) for s in list_segments(session, job_id)]
 
 
 @app.post("/api/jobs/{job_id}/segments", status_code=201)
 def create_job_segment(
-    job_id: int, body: CreateSegmentRequest, session: Session = Depends(get_session)
+    job_id: int,
+    body: CreateSegmentRequest,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
 ) -> dict:
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
 
     try:
@@ -242,10 +379,16 @@ def create_job_segment(
 
 @app.put("/api/segments/{segment_id}")
 def update_job_segment(
-    segment_id: int, body: UpdateSegmentRequest, session: Session = Depends(get_session)
+    segment_id: int,
+    body: UpdateSegmentRequest,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
 ) -> dict:
     segment = session.get(ScriptSegment, segment_id)
     if segment is None:
+        raise HTTPException(404, "segment not found")
+    job = session.get(PropertyJob, segment.job_id)
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "segment not found")
 
     if body.text is not None:
@@ -269,9 +412,16 @@ def update_job_segment(
 
 
 @app.delete("/api/segments/{segment_id}")
-def delete_job_segment(segment_id: int, session: Session = Depends(get_session)) -> dict:
+def delete_job_segment(
+    segment_id: int,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
+) -> dict:
     segment = session.get(ScriptSegment, segment_id)
     if segment is None:
+        raise HTTPException(404, "segment not found")
+    job = session.get(PropertyJob, segment.job_id)
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "segment not found")
     session.delete(segment)
     session.commit()
@@ -280,11 +430,13 @@ def delete_job_segment(segment_id: int, session: Session = Depends(get_session))
 
 @app.post("/api/jobs/{job_id}/location")
 def refresh_location_data(
-    job_id: int, session: Session = Depends(get_session)
+    job_id: int,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
 ) -> dict:
     """Populate `job.location_data_json` from the §5 aggregator."""
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
 
     data = uk_location.build_location_data(
@@ -305,7 +457,10 @@ class UpdateJobRequest(BaseModel):
 
 @app.patch("/api/jobs/{job_id}")
 def update_job(
-    job_id: int, body: UpdateJobRequest, session: Session = Depends(get_session)
+    job_id: int,
+    body: UpdateJobRequest,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
 ) -> PropertyJob:
     """Pre-run settings updates only. Once a job has moved past INGESTION,
     its already-rendered (or in-progress) artifacts no longer reflect a
@@ -314,7 +469,7 @@ def update_job(
     JobStatus-guard convention run_pipeline already uses for the same
     reason (assert_transition)."""
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
 
     if body.use_avatar is not None and job.status != JobStatus.INGESTION:
@@ -332,10 +487,14 @@ def update_job(
 
 
 @app.post("/api/jobs/{job_id}/run")
-def run_pipeline(job_id: int, session: Session = Depends(get_session)) -> dict:
+def run_pipeline(
+    job_id: int,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
+) -> dict:
     """Run every applicable pipeline step for this job's feature level."""
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
 
     segments = list_segments(session, job_id)
@@ -453,7 +612,9 @@ def _serialize_status(status, session: Session) -> dict:
 
 
 @app.get("/api/integrations")
-def list_integration_statuses(session: Session = Depends(get_session)) -> list[dict]:
+def list_integration_statuses(
+    admin: AdminAccount = Depends(require_admin), session: Session = Depends(get_session)
+) -> list[dict]:
     """Every known system (§7 reference table) with its configuration status.
 
     Never returns raw secret values -- only masked previews (see `secrets_store.mask`).
@@ -463,7 +624,9 @@ def list_integration_statuses(session: Session = Depends(get_session)) -> list[d
 
 
 @app.get("/api/integrations/{slug}")
-def get_integration_status(slug: str, session: Session = Depends(get_session)) -> dict:
+def get_integration_status(
+    slug: str, admin: AdminAccount = Depends(require_admin), session: Session = Depends(get_session)
+) -> dict:
     settings = IntegrationSettings(session)
     try:
         return _serialize_status(settings.status_for(slug), session)
@@ -473,7 +636,11 @@ def get_integration_status(slug: str, session: Session = Depends(get_session)) -
 
 @app.put("/api/integrations/{slug}/fields/{field_key}")
 def set_integration_field(
-    slug: str, field_key: str, body: SetFieldRequest, session: Session = Depends(get_session)
+    slug: str,
+    field_key: str,
+    body: SetFieldRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
 ) -> dict:
     """Store (encrypted) a credential field value. Takes effect immediately --
     no restart or .env edit needed, since client factories read live from here."""
@@ -487,7 +654,10 @@ def set_integration_field(
 
 @app.delete("/api/integrations/{slug}/fields/{field_key}")
 def clear_integration_field(
-    slug: str, field_key: str, session: Session = Depends(get_session)
+    slug: str,
+    field_key: str,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
 ) -> dict:
     settings = IntegrationSettings(session)
     settings.clear_field(slug, field_key)
@@ -500,7 +670,10 @@ class SetActiveVendorRequest(BaseModel):
 
 @app.put("/api/categories/{category_key}/active-vendor")
 def set_category_active_vendor(
-    category_key: str, body: SetActiveVendorRequest, session: Session = Depends(get_session)
+    category_key: str,
+    body: SetActiveVendorRequest,
+    admin: AdminAccount = Depends(require_admin),
+    session: Session = Depends(get_session),
 ) -> list[dict]:
     from .services.active_vendor import set_active_vendor
 
@@ -514,14 +687,16 @@ def set_category_active_vendor(
 
 
 @app.get("/api/integrations/openai/base-url-presets")
-def openai_base_url_presets() -> list[dict]:
+def openai_base_url_presets(admin: AdminAccount = Depends(require_admin)) -> list[dict]:
     from .services.integration_registry import OPENAI_COMPATIBLE_PRESETS
 
     return list(OPENAI_COMPATIBLE_PRESETS)
 
 
 @app.post("/api/integrations/{slug}/test")
-def test_integration_connection(slug: str, session: Session = Depends(get_session)) -> dict:
+def test_integration_connection(
+    slug: str, admin: AdminAccount = Depends(require_admin), session: Session = Depends(get_session)
+) -> dict:
     try:
         result = test_connection(session, slug)
     except ValueError as exc:
@@ -543,10 +718,13 @@ class UpdateScriptRequest(BaseModel):
 
 @app.put("/api/jobs/{job_id}/script")
 def update_job_script(
-    job_id: int, body: UpdateScriptRequest, session: Session = Depends(get_session)
+    job_id: int,
+    body: UpdateScriptRequest,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
 ) -> dict:
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
 
     current_script = job.script_json or {}
@@ -562,14 +740,16 @@ def update_job_script(
 
 
 @app.get("/api/jobs/{job_id}/export")
-def download_export_pack(job_id: int, session: Session = Depends(get_session)) -> Response:
+def download_export_pack(
+    job_id: int,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
+) -> Response:
     from .services.export_pack import build_export_zip
 
     job = session.get(PropertyJob, job_id)
-    if job is None:
+    if job is None or job.agent_id != agency.id:
         raise HTTPException(404, "job not found")
-
-    agent = session.get(AgentProfile, job.agent_id) if job.agent_id else None
 
     zip_bytes = build_export_zip(
         job_id=job.id,
@@ -577,12 +757,12 @@ def download_export_pack(job_id: int, session: Session = Depends(get_session)) -
         postcode=job.postcode,
         price_guide=job.price_guide,
         garden_orientation=job.garden_orientation,
-        agency_name=agent.agency_name if agent else "Property Studio Agency",
-        primary_color=agent.primary_color if agent else "#1E293B",
-        secondary_color=agent.secondary_color if agent else "#0F172A",
-        logo_url=agent.logo_path if agent else "",
-        staff_name=agent.staff_name if agent else "Property Agent",
-        staff_headshot=agent.staff_headshot_path if agent else "",
+        agency_name=agency.agency_name,
+        primary_color=agency.primary_color,
+        secondary_color=agency.secondary_color,
+        logo_url=agency.logo_path or "",
+        staff_name=agency.staff_name or "Property Agent",
+        staff_headshot=agency.staff_headshot_path or "",
         script_json=job.script_json,
         location_data=job.location_data_json,
         work_dir=Path("work") / f"job_{job.id}",

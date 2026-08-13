@@ -86,111 +86,111 @@ def api_client(tmp_path, monkeypatch):
         yield client
 
 
-def _create_job_via_api(api_client) -> int:
-    resp = api_client.post("/api/jobs", json={"address": "1 Test St", "postcode": "TE1 1ST"})
+def _create_job_via_api(agency_client) -> int:
+    resp = agency_client.post("/api/jobs", json={"address": "1 Test St", "postcode": "TE1 1ST"})
     assert resp.status_code == 201
     return resp.json()["id"]
 
 
-def test_create_and_list_segments_via_api(api_client) -> None:
-    job_id = _create_job_via_api(api_client)
-    resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely hallway."})
+def test_create_and_list_segments_via_api(agency_client) -> None:
+    job_id = _create_job_via_api(agency_client)
+    resp = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely hallway."})
     assert resp.status_code == 201
     assert resp.json()["order_index"] == 0
 
-    list_resp = api_client.get(f"/api/jobs/{job_id}/segments")
+    list_resp = agency_client.get(f"/api/jobs/{job_id}/segments")
     assert len(list_resp.json()) == 1
 
 
-def test_create_segment_order_index_continues_from_existing(api_client) -> None:
-    job_id = _create_job_via_api(api_client)
-    first = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The hallway."})
-    second = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The kitchen."})
+def test_create_segment_order_index_continues_from_existing(agency_client) -> None:
+    job_id = _create_job_via_api(agency_client)
+    first = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The hallway."})
+    second = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The kitchen."})
 
     assert first.json()["order_index"] == 0
     assert second.json()["order_index"] == 1
 
 
-def test_list_segments_unknown_job_returns_404(api_client) -> None:
-    resp = api_client.get("/api/jobs/999999/segments")
+def test_list_segments_unknown_job_returns_404(agency_client) -> None:
+    resp = agency_client.get("/api/jobs/999999/segments")
     assert resp.status_code == 404
 
 
-def test_create_segment_unknown_job_returns_404(api_client) -> None:
-    resp = api_client.post("/api/jobs/999999/segments", json={"text": "A room."})
+def test_create_segment_unknown_job_returns_404(agency_client) -> None:
+    resp = agency_client.post("/api/jobs/999999/segments", json={"text": "A room."})
     assert resp.status_code == 404
 
 
-def test_update_unknown_segment_returns_404(api_client) -> None:
-    resp = api_client.put("/api/segments/999999", json={"text": "New text."})
+def test_update_unknown_segment_returns_404(agency_client) -> None:
+    resp = agency_client.put("/api/segments/999999", json={"text": "New text."})
     assert resp.status_code == 404
 
 
-def test_delete_unknown_segment_returns_404(api_client) -> None:
-    resp = api_client.delete("/api/segments/999999")
+def test_delete_unknown_segment_returns_404(agency_client) -> None:
+    resp = agency_client.delete("/api/segments/999999")
     assert resp.status_code == 404
 
 
-def test_create_segment_rejects_price_text(api_client) -> None:
-    job_id = _create_job_via_api(api_client)
-    resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "Offers over £300,000."})
+def test_create_segment_rejects_price_text(agency_client) -> None:
+    job_id = _create_job_via_api(agency_client)
+    resp = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "Offers over £300,000."})
     assert resp.status_code == 400
 
 
-def test_update_segment_text_rejects_price(api_client) -> None:
-    job_id = _create_job_via_api(api_client)
-    create_resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A nice garden."})
+def test_update_segment_text_rejects_price(agency_client) -> None:
+    job_id = _create_job_via_api(agency_client)
+    create_resp = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A nice garden."})
     segment_id = create_resp.json()["id"]
 
-    resp = api_client.put(f"/api/segments/{segment_id}", json={"text": "Guide price £500,000."})
+    resp = agency_client.put(f"/api/segments/{segment_id}", json={"text": "Guide price £500,000."})
     assert resp.status_code == 400
 
 
-def test_update_segment_photo_id_must_belong_to_same_job(api_client) -> None:
-    job_id = _create_job_via_api(api_client)
-    other_job_id = _create_job_via_api(api_client)
+def test_update_segment_photo_id_must_belong_to_same_job(agency_client) -> None:
+    job_id = _create_job_via_api(agency_client)
+    other_job_id = _create_job_via_api(agency_client)
 
     import io
-    photo_resp = api_client.post(
+    photo_resp = agency_client.post(
         f"/api/jobs/{other_job_id}/photos",
         files=[("files", ("x.jpg", io.BytesIO(b"\xff\xd8\xff\xe0fake jpeg"), "image/jpeg"))],
     )
     other_photo_id = photo_resp.json()[0]["id"]
 
-    create_resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The kitchen."})
+    create_resp = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "The kitchen."})
     segment_id = create_resp.json()["id"]
 
-    resp = api_client.put(f"/api/segments/{segment_id}", json={"photo_id": other_photo_id})
+    resp = agency_client.put(f"/api/segments/{segment_id}", json={"photo_id": other_photo_id})
     assert resp.status_code == 400
 
 
-def test_delete_segment(api_client) -> None:
-    job_id = _create_job_via_api(api_client)
-    create_resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A spare room."})
+def test_delete_segment(agency_client) -> None:
+    job_id = _create_job_via_api(agency_client)
+    create_resp = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A spare room."})
     segment_id = create_resp.json()["id"]
 
-    resp = api_client.delete(f"/api/segments/{segment_id}")
+    resp = agency_client.delete(f"/api/segments/{segment_id}")
     assert resp.status_code == 200
 
-    list_resp = api_client.get(f"/api/jobs/{job_id}/segments")
+    list_resp = agency_client.get(f"/api/jobs/{job_id}/segments")
     assert list_resp.json() == []
 
 
-def test_run_pipeline_rejects_job_with_unassigned_segment_photo(api_client) -> None:
+def test_run_pipeline_rejects_job_with_unassigned_segment_photo(agency_client) -> None:
     """A segment with no photo_id renders with an empty visual_path
     downstream (RemotionAssemblyStep._run_segmented) -- /run must refuse
     up front with a clear error rather than silently produce a malformed
     render."""
-    job_id = _create_job_via_api(api_client)
-    api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely kitchen."})
+    job_id = _create_job_via_api(agency_client)
+    agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely kitchen."})
 
-    resp = api_client.post(f"/api/jobs/{job_id}/run")
+    resp = agency_client.post(f"/api/jobs/{job_id}/run")
 
     assert resp.status_code == 422
     assert "photo" in resp.json()["detail"].lower()
 
 
-def test_run_pipeline_populates_script_json_for_segmented_job(api_client, monkeypatch, brochure_pdf) -> None:
+def test_run_pipeline_populates_script_json_for_segmented_job(agency_client, monkeypatch, brochure_pdf) -> None:
     """ScriptAndVoiceStep's segmented branch never populates the legacy
     `scripts` artifact that job.script_json used to be assigned from
     directly -- previously this silently left job.script_json as None for
@@ -216,26 +216,23 @@ def test_run_pipeline_populates_script_json_for_segmented_job(api_client, monkey
 
     monkeypatch.setattr(script_and_voice_mod, "get_active_tts_client", lambda **kw: _FakeTtsClient())
 
-    job_id = _create_job_via_api(api_client)
+    job_id = _create_job_via_api(agency_client)
 
-    api_client.post(
+    agency_client.post(
         f"/api/jobs/{job_id}/brochure",
         files={"file": ("brochure.pdf", io.BytesIO(brochure_pdf.read_bytes()), "application/pdf")},
     )
 
     img_bytes = b"\xff\xd8\xff\xe0fake jpeg content"
-    photo_resp = api_client.post(
+    photo_resp = agency_client.post(
         f"/api/jobs/{job_id}/photos",
         files=[("files", ("kitchen.jpg", io.BytesIO(img_bytes), "image/jpeg"))],
     )
     photo_id = photo_resp.json()[0]["id"]
 
-    seg_resp = api_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely bright kitchen."})
+    seg_resp = agency_client.post(f"/api/jobs/{job_id}/segments", json={"text": "A lovely bright kitchen."})
     segment_id = seg_resp.json()["id"]
-    api_client.put(f"/api/segments/{segment_id}", json={"photo_id": photo_id})
-
-    agent_resp = api_client.post("/api/agents", json={"agency_name": "Test Agency"})
-    agent_id = agent_resp.json()["id"]
+    agency_client.put(f"/api/segments/{segment_id}", json={"photo_id": photo_id})
 
     import app.db as db_mod
     from sqlmodel import Session
@@ -243,21 +240,18 @@ def test_run_pipeline_populates_script_json_for_segmented_job(api_client, monkey
     with Session(db_mod.engine) as session:
         from app.models import AgentProfile, PropertyJob
 
-        agent = session.get(AgentProfile, agent_id)
+        job = session.get(PropertyJob, job_id)
+        agent = session.get(AgentProfile, job.agent_id)
         consent_mod.set_elevenlabs_voice(agent, "voice_abc", consent_confirmed=True)
         session.add(agent)
-
-        job = session.get(PropertyJob, job_id)
-        job.agent_id = agent_id
-        session.add(job)
         session.commit()
 
     monkeypatch.delenv("LOCAL_TOOLS_AVAILABLE", raising=False)
 
-    run_resp = api_client.post(f"/api/jobs/{job_id}/run")
+    run_resp = agency_client.post(f"/api/jobs/{job_id}/run")
     assert run_resp.status_code == 200, run_resp.text
 
-    job_resp = api_client.get(f"/api/jobs/{job_id}")
+    job_resp = agency_client.get(f"/api/jobs/{job_id}")
     script_json = job_resp.json()["script_json"]
     assert script_json is not None
     assert "A lovely bright kitchen." in script_json["walkthrough_script"]

@@ -201,8 +201,8 @@ def api_client(tmp_path, monkeypatch):
         yield client
 
 
-def test_list_integrations_endpoint_returns_all_systems(api_client) -> None:
-    resp = api_client.get("/api/integrations")
+def test_list_integrations_endpoint_returns_all_systems(admin_client) -> None:
+    resp = admin_client.get("/api/integrations")
     assert resp.status_code == 200
     slugs = {item["slug"] for item in resp.json()}
     assert "heygen" in slugs
@@ -210,24 +210,24 @@ def test_list_integrations_endpoint_returns_all_systems(api_client) -> None:
     assert "openai" in slugs
 
 
-def test_list_integrations_includes_category_key_and_is_active(api_client) -> None:
-    resp = api_client.get("/api/integrations")
+def test_list_integrations_includes_category_key_and_is_active(admin_client) -> None:
+    resp = admin_client.get("/api/integrations")
     data = resp.json()
     heygen = next(item for item in data if item["slug"] == "heygen")
     assert heygen["category_key"] == "avatar"
     assert heygen["is_active"] is True
 
 
-def test_set_field_endpoint_never_echoes_raw_secret(api_client) -> None:
-    resp = api_client.put("/api/integrations/heygen/fields/api_key", json={"value": "hg_super_secret_999"})
+def test_set_field_endpoint_never_echoes_raw_secret(admin_client) -> None:
+    resp = admin_client.put("/api/integrations/heygen/fields/api_key", json={"value": "hg_super_secret_999"})
     assert resp.status_code == 200
     body = resp.text
     assert "hg_super_secret_999" not in body
 
 
-def test_set_then_status_shows_configured(api_client) -> None:
-    api_client.put("/api/integrations/heygen/fields/api_key", json={"value": "hg_key_abc123"})
-    resp = api_client.get("/api/integrations/heygen")
+def test_set_then_status_shows_configured(admin_client) -> None:
+    admin_client.put("/api/integrations/heygen/fields/api_key", json={"value": "hg_key_abc123"})
+    resp = admin_client.get("/api/integrations/heygen")
     data = resp.json()
     assert data["is_fully_configured"] is True
     field = next(f for f in data["fields"] if f["key"] == "api_key")
@@ -236,51 +236,51 @@ def test_set_then_status_shows_configured(api_client) -> None:
     assert "hg_key_abc123" not in resp.text
 
 
-def test_clear_field_endpoint(api_client) -> None:
-    api_client.put("/api/integrations/heygen/fields/api_key", json={"value": "hg_key_abc123"})
-    resp = api_client.delete("/api/integrations/heygen/fields/api_key")
+def test_clear_field_endpoint(admin_client) -> None:
+    admin_client.put("/api/integrations/heygen/fields/api_key", json={"value": "hg_key_abc123"})
+    resp = admin_client.delete("/api/integrations/heygen/fields/api_key")
     assert resp.status_code == 200
     assert resp.json()["is_fully_configured"] is False
 
 
-def test_unknown_integration_returns_404(api_client) -> None:
-    resp = api_client.get("/api/integrations/not_a_real_system")
+def test_unknown_integration_returns_404(admin_client) -> None:
+    resp = admin_client.get("/api/integrations/not_a_real_system")
     assert resp.status_code == 404
 
 
-def test_test_connection_endpoint_reports_missing_key(api_client) -> None:
-    resp = api_client.post("/api/integrations/heygen/test")
+def test_test_connection_endpoint_reports_missing_key(admin_client) -> None:
+    resp = admin_client.post("/api/integrations/heygen/test")
     assert resp.status_code == 200
     data = resp.json()
     assert data["ok"] is False
 
 
-def test_admin_page_is_served(api_client) -> None:
-    resp = api_client.get("/admin/integrations")
+def test_admin_page_is_served(admin_client) -> None:
+    resp = admin_client.get("/admin/integrations")
     assert resp.status_code == 200
     assert "Integrations" in resp.text
 
 
-def test_set_active_vendor_endpoint_updates_is_active(api_client) -> None:
-    resp = api_client.put("/api/categories/avatar/active-vendor", json={"slug": "heygen"})
+def test_set_active_vendor_endpoint_updates_is_active(admin_client) -> None:
+    resp = admin_client.put("/api/categories/avatar/active-vendor", json={"slug": "heygen"})
     assert resp.status_code == 200
     data = resp.json()
     heygen = next(item for item in data if item["slug"] == "heygen")
     assert heygen["is_active"] is True
 
 
-def test_set_active_vendor_endpoint_rejects_wrong_category(api_client) -> None:
-    resp = api_client.put("/api/categories/avatar/active-vendor", json={"slug": "elevenlabs"})
+def test_set_active_vendor_endpoint_rejects_wrong_category(admin_client) -> None:
+    resp = admin_client.put("/api/categories/avatar/active-vendor", json={"slug": "elevenlabs"})
     assert resp.status_code == 400
 
 
-def test_set_active_vendor_endpoint_rejects_unknown_category(api_client) -> None:
-    resp = api_client.put("/api/categories/not_a_real_category/active-vendor", json={"slug": "heygen"})
+def test_set_active_vendor_endpoint_rejects_unknown_category(admin_client) -> None:
+    resp = admin_client.put("/api/categories/not_a_real_category/active-vendor", json={"slug": "heygen"})
     assert resp.status_code == 400
 
 
-def test_openai_base_url_presets_endpoint(api_client) -> None:
-    resp = api_client.get("/api/integrations/openai/base-url-presets")
+def test_openai_base_url_presets_endpoint(admin_client) -> None:
+    resp = admin_client.get("/api/integrations/openai/base-url-presets")
     assert resp.status_code == 200
     names = {p["name"] for p in resp.json()}
     assert "Groq" in names
