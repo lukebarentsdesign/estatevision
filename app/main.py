@@ -179,19 +179,6 @@ def update_admin_agency(
     return _serialize_agency(agent)
 
 
-@app.get("/api/agents")
-def list_agents(session: Session = Depends(get_session)) -> list[AgentProfile]:
-    return session.exec(select(AgentProfile)).all()
-
-
-@app.post("/api/agents", status_code=201)
-def create_agent(agent: AgentProfile, session: Session = Depends(get_session)) -> AgentProfile:
-    session.add(agent)
-    session.commit()
-    session.refresh(agent)
-    return agent
-
-
 @app.get("/api/jobs")
 def list_jobs(
     agency: AgentProfile = Depends(require_agency), session: Session = Depends(get_session)
