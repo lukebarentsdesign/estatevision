@@ -160,7 +160,7 @@ python -m pytest tests/ -q
 ### Credentials
 
 Preferred path: run the app and open **`/admin/integrations`**. Every known
-system (HeyGen, ElevenLabs, Gemini Omni, OpenAI, Google 3D Tiles) is listed
+system (HeyGen, ElevenLabs, Gemini Omni, OpenAI) is listed
 with its required fields, a masked view of
 what's already configured, and a "Test connection" button that makes a real
 read-only API call where one safely exists. Keys are encrypted at rest and
@@ -175,7 +175,6 @@ in the admin panel) so existing `.env`-based setups keep working:
 | `ELEVENLABS_API_KEY` | Voiceover (voice-only jobs) — **real client implemented** |
 | `HEYGEN_API_KEY` | Avatar intro/outro — **real client implemented** |
 | `GEMINI_API_KEY` | Hero-shot motion (Veo, via Gemini API) — **real client implemented** |
-| `GOOGLE_MAPS_3D_TILES_KEY` | Aerial flyover |
 | `LOCAL_TOOLS_AVAILABLE=1` | Switch Real-ESRGAN/Zero-DCE/DepthFlow/WhisperX/Demucs/FFmpeg/Remotion from stubs to real subprocess calls |
 | `PROPERTY_STUDIO_DB` | SQLite file path (default `property_studio.db`) |
 | `PROPERTY_STUDIO_SECRET_KEY_FILE` | Admin-panel encryption key file path (default `secret.key`, gitignored) |

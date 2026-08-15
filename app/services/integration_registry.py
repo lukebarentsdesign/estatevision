@@ -115,19 +115,6 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         test_mode=ConnectionTestMode.LIVE,
         used_by=("script_and_voice pipeline step",),
     ),
-    IntegrationDefinition(
-        slug="google_3d_tiles",
-        name="Google Photorealistic 3D Tiles",
-        category="Video & Image Generation",
-        category_key="aerial_flyover",
-        description="Aerial orbiting flyover render for cinematic-level jobs (§4 cinematic).",
-        fields=(
-            CredentialField("api_key", "API Key", FieldKind.API_KEY),
-        ),
-        docs_url="https://developers.google.com/maps/documentation/tile",
-        test_mode=ConnectionTestMode.FORMAT_ONLY,
-        used_by=("aerial_flyover pipeline step",),
-    ),
 )
 
 # Known OpenAI-compatible chat-completions endpoints, offered as quick-fill

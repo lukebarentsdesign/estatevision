@@ -19,7 +19,6 @@ from .contract import PipelineRunner, PipelineStep
 from .steps.assembly import RemotionAssemblyStep
 from .steps.avatar_and_captions import AvatarIntroStep, CaptionTimingStep
 from .steps.cinematic import (
-    AerialFlyoverStep,
     LutAndGrainStep,
     MicrositeBuilderStep,
     MusicDuckingStep,
@@ -53,7 +52,6 @@ ALL_STEPS: tuple[type[PipelineStep], ...] = (
     SkyReplacementStep,
     MusicDuckingStep,
     LutAndGrainStep,
-    AerialFlyoverStep,
     MicrositeBuilderStep,
 )
 

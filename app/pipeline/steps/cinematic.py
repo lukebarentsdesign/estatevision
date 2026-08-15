@@ -98,40 +98,6 @@ class LutAndGrainStep(PipelineStep):
         return StepResult(StepStatus.DONE, {"graded_outputs": graded})
 
 
-class AerialFlyoverStep(PipelineStep):
-    """10s orbiting aerial flyover via Google Photorealistic 3D Tiles (§4 `cinematic`).
-
-    IMPORTANT SCOPING NOTE (confirmed against live Google docs): Photorealistic
-    3D Tiles is NOT a "call an API, get an MP4" service. It returns raw 3D mesh
-    data in the OGC 3D Tiles format for a client-side renderer (the standard
-    pairing is Cesium.js) to draw. Producing an actual flyover clip requires a
-    small render sub-pipeline: a headless-browser Cesium session, a scripted
-    orbiting camera path, per-frame capture (e.g. via Puppeteer), and video
-    encoding -- structurally closer to the Remotion CLI invocation in
-    `assembly.py` than to a REST client. That has not been built. This step
-    stays stubbed (a placeholder file) regardless of whether a key is
-    configured, since a key alone does not unlock this feature -- see the
-    project README for the decision to defer this.
-    """
-
-    name = "aerial_flyover"
-    levels = _CINEMATIC_AND_ABOVE
-    requires = ()
-    critical = False
-
-    def run(self, ctx: JobContext) -> StepResult:
-        job = ctx.job_snapshot
-        lat, lon = job.get("latitude"), job.get("longitude")
-        if lat is None or lon is None:
-            return StepResult(StepStatus.SKIPPED, message="no coordinates for aerial flyover")
-
-        output_path = ctx.work_dir / "aerial" / "flyover.mp4"
-        write_placeholder_file(
-            output_path, f"[stub aerial flyover -- see AerialFlyoverStep docstring]\nlat={lat}\nlon={lon}\n"
-        )
-        return StepResult(StepStatus.DONE, {"flyover_path": str(output_path)})
-
-
 class MicrositeBuilderStep(PipelineStep):
     """Standalone property microsite (§4 `cinematic`, §6.4).
 

@@ -48,7 +48,6 @@ _ENV_FALLBACKS: dict[tuple[str, str], str] = {
     ("elevenlabs", "api_key"): "ELEVENLABS_API_KEY",
     ("gemini_omni", "api_key"): "GEMINI_API_KEY",
     ("openai", "api_key"): "OPENAI_API_KEY",
-    ("google_3d_tiles", "api_key"): "GOOGLE_MAPS_3D_TILES_KEY",
 }
 
 
