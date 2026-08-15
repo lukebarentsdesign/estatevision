@@ -90,6 +90,14 @@ class HttpGeminiOmniClient:
     with `x-goog-api-key` auth, and `GET /v1beta/{operation_name}` for polling
     (ai.google.dev/gemini-api/docs/veo, fetched 2026-08-10).
 
+    The image field uses `bytesBase64Encoded`/`mimeType`, not the
+    `inlineData.data`/`inlineData.mimeType` shape shown in the docs as of
+    2026-08-10 -- confirmed by a live call against `veo-3.1-generate-preview`
+    on 2026-08-15: `inlineData` is rejected outright ("isn't supported by this
+    model"), while `bytesBase64Encoded` with the same image passes validation
+    and reaches quota/billing enforcement instead. Re-check this if the API
+    starts rejecting `bytesBase64Encoded` too.
+
     NOT independently confirmed: the download step. Docs describe the
     completed response containing a video URI but don't document how to
     authenticate the download request. This implementation sends the same
@@ -122,10 +130,8 @@ class HttpGeminiOmniClient:
                         {
                             "prompt": _MOTION_PROMPTS[motion_style],
                             "image": {
-                                "inlineData": {
-                                    "mimeType": mime_type,
-                                    "data": base64.b64encode(image_bytes).decode("ascii"),
-                                }
+                                "bytesBase64Encoded": base64.b64encode(image_bytes).decode("ascii"),
+                                "mimeType": mime_type,
                             },
                         }
                     ],

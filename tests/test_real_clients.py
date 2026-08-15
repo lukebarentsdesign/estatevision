@@ -286,7 +286,7 @@ def test_gemini_omni_sends_motion_specific_no_reveal_prompt(sample_hero_image: P
     prompt = captured["body"]["instances"][0]["prompt"]
     assert "no reveal" in prompt.lower()
     assert "forward-facing" in prompt.lower()
-    assert captured["body"]["instances"][0]["image"]["inlineData"]["mimeType"] == "image/png"
+    assert captured["body"]["instances"][0]["image"]["mimeType"] == "image/png"
 
 
 def test_gemini_omni_rejects_disallowed_motion_style(sample_hero_image: Path, tmp_path: Path) -> None:
