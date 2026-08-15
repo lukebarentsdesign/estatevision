@@ -15,6 +15,7 @@ import pytest
 from app.clients.elevenlabs import ElevenLabsError, HttpElevenLabsClient
 from app.clients.gemini_omni import GeminiOmniError, HttpGeminiOmniClient
 from app.clients.heygen import HeyGenError, HttpHeyGenClient
+from app.clients.openai_llm import HttpOpenAILLMClient, OpenAIError
 
 
 def _client_with_transport(cls, transport: httpx.MockTransport, monkeypatch, **kwargs):
@@ -343,3 +344,70 @@ def test_gemini_omni_poll_timeout_raises(sample_hero_image: Path, tmp_path: Path
         client.animate_hero_shot(
             image_path=sample_hero_image, motion_style="subtle_zoom_in", output_path=tmp_path / "out.mp4"
         )
+
+
+# --- OpenAI (or compatible) ----------------------------------------------------
+
+
+def test_openai_complete_returns_message_content(monkeypatch) -> None:
+    import json
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/v1/chat/completions"
+        assert request.headers["authorization"] == "Bearer test_key"
+        body = json.loads(request.content)
+        assert body["model"] == "gpt-4.1"
+        assert body["messages"] == [{"role": "user", "content": "write a script"}]
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "Generated narration."}}]},
+        )
+
+    client = _client_with_transport(
+        HttpOpenAILLMClient, httpx.MockTransport(handler), monkeypatch, api_key="test_key"
+    )
+    result = client.complete("write a script")
+    assert result == "Generated narration."
+
+
+def test_openai_uses_configured_base_url_and_model(monkeypatch) -> None:
+    import json
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url).startswith("https://openrouter.ai/api/v1/chat/completions")
+        body = json.loads(request.content)
+        assert body["model"] == "some-other-model"
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client = _client_with_transport(
+        HttpOpenAILLMClient,
+        httpx.MockTransport(handler),
+        monkeypatch,
+        api_key="k",
+        base_url="https://openrouter.ai/api/v1",
+        model="some-other-model",
+    )
+    assert client.complete("prompt") == "ok"
+
+
+def test_openai_raises_on_non_200(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": {"message": "invalid api key"}})
+
+    client = _client_with_transport(
+        HttpOpenAILLMClient, httpx.MockTransport(handler), monkeypatch, api_key="bad"
+    )
+    with pytest.raises(OpenAIError, match="401"):
+        client.complete("prompt")
+
+
+def test_openai_raises_on_malformed_response(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"unexpected": "shape"})
+
+    client = _client_with_transport(
+        HttpOpenAILLMClient, httpx.MockTransport(handler), monkeypatch, api_key="k"
+    )
+    with pytest.raises(OpenAIError, match="no completion content"):
+        client.complete("prompt")

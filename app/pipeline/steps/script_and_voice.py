@@ -9,46 +9,14 @@ module.
 
 from __future__ import annotations
 
-from typing import Protocol
-
-from ...clients.credential_lookup import resolve_field
 from ...clients.dispatch import get_active_tts_client
+from ...clients.openai_llm import get_openai_llm_client
 from ...models import FeatureLevel
 from ...services.compliance import assert_price_free
 from ...services.script_audio import synthesize_and_slice_segments
 from ...services.script_prompt import ScriptJobContext, ScriptVariant, build_prompt
 from ...services.script_segments import list_segments
 from ..contract import JobContext, PipelineStep, StepResult, StepStatus
-
-
-class ScriptLLMClient(Protocol):
-    def complete(self, prompt: str) -> str:
-        ...
-
-
-class StubScriptLLMClient:
-    """Deterministic stand-in: returns the numbered source sentences, joined.
-
-    This trivially satisfies §1.1 grounding (it uses only source sentences) and
-    is good enough to exercise the pipeline without an LLM key.
-    """
-
-    def complete(self, prompt: str) -> str:
-        marker = "SOURCE SENTENCES (your only permitted material):\n"
-        _, _, tail = prompt.partition(marker)
-        lines = [line.split(". ", 1)[-1] for line in tail.strip().splitlines() if line.strip()]
-        return " ".join(lines)
-
-
-def get_script_llm_client() -> ScriptLLMClient:
-    if resolve_field("openai", "api_key"):
-        raise NotImplementedError(
-            "Real LLM client not implemented yet -- wire this up against the "
-            "OpenAI (or compatible) API. A key is already configured via the "
-            "admin panel or environment; only the request/response handling "
-            "remains."
-        )
-    return StubScriptLLMClient()
 
 
 class ScriptAndVoiceStep(PipelineStep):
@@ -76,7 +44,7 @@ class ScriptAndVoiceStep(PipelineStep):
             brochure_sentences=sentences,
         )
 
-        llm = get_script_llm_client()
+        llm = get_openai_llm_client()
 
         # §4: `standard` produces 1 short-form reel script's worth of shorts
         # covering a single social cut; `plus`/`cinematic`/`custom` need 3
