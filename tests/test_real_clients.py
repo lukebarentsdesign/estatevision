@@ -16,6 +16,7 @@ from app.clients.elevenlabs import ElevenLabsError, HttpElevenLabsClient
 from app.clients.gemini_omni import GeminiOmniError, HttpGeminiOmniClient
 from app.clients.heygen import HeyGenError, HttpHeyGenClient
 from app.clients.openai_llm import HttpOpenAILLMClient, OpenAIError
+from app.clients.replicate_wan import HttpReplicateWanClient, ReplicateWanError
 
 
 def _client_with_transport(cls, transport: httpx.MockTransport, monkeypatch, **kwargs):
@@ -411,3 +412,136 @@ def test_openai_raises_on_malformed_response(monkeypatch) -> None:
     )
     with pytest.raises(OpenAIError, match="no completion content"):
         client.complete("prompt")
+
+
+# --- Replicate (Wan 2.2) --------------------------------------------------------
+
+
+def test_replicate_wan_full_flow_generate_poll_download(sample_hero_image: Path, tmp_path: Path, monkeypatch) -> None:
+    fake_video_bytes = b"fake-wan-mp4-bytes"
+    call_count = {"status_polls": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models/wan-video/wan-2.2-i2v-fast/predictions":
+            assert request.headers["authorization"] == "Bearer replicate_key"
+            return httpx.Response(
+                201,
+                json={
+                    "status": "starting",
+                    "urls": {"get": "https://api.replicate.com/v1/predictions/abc123"},
+                },
+            )
+        if request.url.path == "/v1/predictions/abc123":
+            call_count["status_polls"] += 1
+            if call_count["status_polls"] < 2:
+                return httpx.Response(200, json={"status": "processing", "urls": {"get": str(request.url)}})
+            return httpx.Response(
+                200,
+                json={"status": "succeeded", "output": "https://wan.example/abc123.mp4"},
+            )
+        if str(request.url) == "https://wan.example/abc123.mp4":
+            return httpx.Response(200, content=fake_video_bytes)
+        raise AssertionError(f"unexpected request to {request.url}")
+
+    client = _client_with_transport(
+        HttpReplicateWanClient, httpx.MockTransport(handler), monkeypatch, api_token="replicate_key"
+    )
+    monkeypatch.setattr("app.clients.replicate_wan._POLL_INTERVAL_SEC", 0)
+
+    output = client.animate_hero_shot(
+        image_path=sample_hero_image,
+        motion_style="subtle_zoom_in",
+        output_path=tmp_path / "hero_clip.mp4",
+    )
+
+    assert output.read_bytes() == fake_video_bytes
+    assert call_count["status_polls"] == 2
+
+
+def test_replicate_wan_sends_motion_specific_no_reveal_prompt(
+    sample_hero_image: Path, tmp_path: Path, monkeypatch
+) -> None:
+    import json
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models/wan-video/wan-2.2-i2v-fast/predictions":
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(
+                201, json={"status": "starting", "urls": {"get": "https://api.replicate.com/v1/predictions/x"}}
+            )
+        return httpx.Response(200, json={"status": "succeeded", "output": "https://wan.example/x.mp4"})
+
+    client = _client_with_transport(
+        HttpReplicateWanClient, httpx.MockTransport(handler), monkeypatch, api_token="k"
+    )
+    monkeypatch.setattr("app.clients.replicate_wan._POLL_INTERVAL_SEC", 0)
+
+    client.animate_hero_shot(
+        image_path=sample_hero_image, motion_style="subtle_pan", output_path=tmp_path / "out.mp4"
+    )
+
+    prompt = captured["body"]["input"]["prompt"]
+    assert "no reveal" in prompt.lower()
+    assert "forward-facing" in prompt.lower()
+
+
+def test_replicate_wan_rejects_disallowed_motion_style(sample_hero_image: Path, tmp_path: Path) -> None:
+    client = HttpReplicateWanClient(api_token="k")
+    with pytest.raises(ValueError, match="not allowed"):
+        client.animate_hero_shot(
+            image_path=sample_hero_image, motion_style="large_reveal_pan", output_path=tmp_path / "out.mp4"
+        )
+
+
+def test_replicate_wan_raises_on_prediction_rejection(sample_hero_image: Path, tmp_path: Path, monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={"detail": "invalid input"})
+
+    client = _client_with_transport(
+        HttpReplicateWanClient, httpx.MockTransport(handler), monkeypatch, api_token="k"
+    )
+    with pytest.raises(ReplicateWanError, match="rejected"):
+        client.animate_hero_shot(
+            image_path=sample_hero_image, motion_style="subtle_zoom_in", output_path=tmp_path / "out.mp4"
+        )
+
+
+def test_replicate_wan_raises_on_prediction_failure(sample_hero_image: Path, tmp_path: Path, monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models/wan-video/wan-2.2-i2v-fast/predictions":
+            return httpx.Response(
+                201, json={"status": "starting", "urls": {"get": "https://api.replicate.com/v1/predictions/x"}}
+            )
+        return httpx.Response(200, json={"status": "failed", "error": "model error", "urls": {"get": str(request.url)}})
+
+    client = _client_with_transport(
+        HttpReplicateWanClient, httpx.MockTransport(handler), monkeypatch, api_token="k"
+    )
+    monkeypatch.setattr("app.clients.replicate_wan._POLL_INTERVAL_SEC", 0)
+
+    with pytest.raises(ReplicateWanError, match="failed"):
+        client.animate_hero_shot(
+            image_path=sample_hero_image, motion_style="subtle_zoom_in", output_path=tmp_path / "out.mp4"
+        )
+
+
+def test_replicate_wan_poll_timeout_raises(sample_hero_image: Path, tmp_path: Path, monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models/wan-video/wan-2.2-i2v-fast/predictions":
+            return httpx.Response(
+                201, json={"status": "starting", "urls": {"get": "https://api.replicate.com/v1/predictions/x"}}
+            )
+        return httpx.Response(200, json={"status": "processing", "urls": {"get": str(request.url)}})
+
+    client = _client_with_transport(
+        HttpReplicateWanClient, httpx.MockTransport(handler), monkeypatch, api_token="k"
+    )
+    monkeypatch.setattr("app.clients.replicate_wan._POLL_INTERVAL_SEC", 0)
+    monkeypatch.setattr("app.clients.replicate_wan._POLL_TIMEOUT_SEC", 0)
+
+    with pytest.raises(ReplicateWanError, match="did not complete"):
+        client.animate_hero_shot(
+            image_path=sample_hero_image, motion_style="subtle_zoom_in", output_path=tmp_path / "out.mp4"
+        )

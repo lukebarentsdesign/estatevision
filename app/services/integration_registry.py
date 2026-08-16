@@ -99,6 +99,25 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         used_by=("motion_pass pipeline step",),
     ),
     IntegrationDefinition(
+        slug="replicate_wan",
+        name="Replicate (Wan 2.2)",
+        category="Video & Image Generation",
+        category_key="hero_shot_animation",
+        description=(
+            "Alternative hero-shot motion vendor: runs Wan 2.2 image-to-video on Replicate's "
+            "hosted GPUs instead of a local GPU (§4 standard). Pick the active vendor for this "
+            "category below."
+        ),
+        fields=(
+            CredentialField(
+                "api_key", "API Token", FieldKind.API_KEY, help_text="From replicate.com/account/api-tokens."
+            ),
+        ),
+        docs_url="https://replicate.com/wan-video/wan-2.2-i2v-fast",
+        test_mode=ConnectionTestMode.LIVE,
+        used_by=("motion_pass pipeline step",),
+    ),
+    IntegrationDefinition(
         slug="openai",
         name="OpenAI (or compatible)",
         category="Script Generation",

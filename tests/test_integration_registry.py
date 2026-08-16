@@ -15,7 +15,7 @@ def test_avatar_and_tts_and_hero_shot_categories_have_expected_members() -> None
 
     assert by_category["avatar"] == ["heygen"]
     assert by_category["tts"] == ["elevenlabs"]
-    assert by_category["hero_shot_animation"] == ["gemini_omni"]
+    assert by_category["hero_shot_animation"] == ["gemini_omni", "replicate_wan"]
     assert by_category["script_generation"] == ["openai"]
     assert "aerial_flyover" not in by_category
     assert "schools_data" not in by_category

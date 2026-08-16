@@ -175,6 +175,7 @@ in the admin panel) so existing `.env`-based setups keep working:
 | `ELEVENLABS_API_KEY` | Voiceover (voice-only jobs) — **real client implemented** |
 | `HEYGEN_API_KEY` | Avatar intro/outro — **real client implemented** |
 | `GEMINI_API_KEY` | Hero-shot motion (Veo, via Gemini API) — **real client implemented** |
+| `REPLICATE_API_TOKEN` | Hero-shot motion (Wan 2.2, via Replicate) — **real client implemented**; alternate vendor in the same `hero_shot_animation` category as Gemini Omni, runs on Replicate's hosted GPUs instead of a local one |
 | `LOCAL_TOOLS_AVAILABLE=1` | Switch Real-ESRGAN/Zero-DCE/DepthFlow/WhisperX/Demucs/FFmpeg/Remotion from stubs to real subprocess calls |
 | `PROPERTY_STUDIO_DB` | SQLite file path (default `property_studio.db`) |
 | `PROPERTY_STUDIO_SECRET_KEY_FILE` | Admin-panel encryption key file path (default `secret.key`, gitignored) |
@@ -185,11 +186,11 @@ Every `app/clients/*.py` module exposes a `get_*_client(*, session=None)`
 factory that returns a stub unless a key is configured (admin panel first,
 env var fallback), at which point it returns an `Http*` class.
 
-**ElevenLabs, HeyGen, and Gemini Omni (Veo) are done** — real HTTP calls,
-tested against a mocked transport in `tests/test_real_clients.py`. Two details
-weren't independently confirmed against live docs this session and are
-flagged in the source with a pointer to what to check first if the real call
-fails:
+**ElevenLabs, HeyGen, OpenAI, Gemini Omni (Veo), and Replicate (Wan 2.2) are
+done** — real HTTP calls, tested against a mocked transport in
+`tests/test_real_clients.py`. Several details weren't independently confirmed
+against live docs and are flagged in the source with a pointer to what to
+check first if the real call fails:
 
 - `app/clients/heygen.py` — the generation-request field names are the
   well-established v2 avatar schema, but HeyGen's docs site is JS-rendered
@@ -200,7 +201,22 @@ fails:
   (`ai.google.dev/gemini-api/docs/veo`), but the download-authentication step
   for the finished video URI isn't documented; this sends the same
   `x-goog-api-key` header used everywhere else in the API, which is the
-  family's standard pattern but wasn't verified for this specific step.
+  family's standard pattern but wasn't verified for this specific step. The
+  image field is `bytesBase64Encoded`/`mimeType`, not the `inlineData` shape
+  shown in Google's own published example — confirmed by a live 400 against
+  `veo-3.1-generate-preview` on 2026-08-15 (`inlineData` is rejected outright
+  regardless of image validity).
+- `app/clients/replicate_wan.py` — the prediction create/poll/download flow
+  (`POST /v1/predictions`, `Bearer` auth) is confirmed against Replicate's
+  general HTTP API reference, but the Wan 2.2 model's exact input field names
+  (`image`, `prompt`) are Replicate's conventional names, not verified
+  against this specific model's OpenAPI schema (which requires an
+  authenticated call to inspect). Check
+  `https://replicate.com/wan-video/wan-2.2-i2v-fast/api` first if the real
+  call fails. Runs on Replicate's hosted GPUs rather than locally — this app
+  doesn't assume the host machine has a GPU with enough VRAM for the
+  upstream [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) project (6GB+
+  minimum) to run natively.
 
 Everything else (Google 3D Tiles) still raises `NotImplementedError` with a
 pointer to what needs wiring once available — the call sites in

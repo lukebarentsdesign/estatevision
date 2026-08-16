@@ -109,10 +109,35 @@ def _test_openai(credentials: dict[str, str]) -> ConnectionTestResult:
     return ConnectionTestResult("openai", False, ConnectionTestMode.LIVE, f"Unexpected status {resp.status_code}.")
 
 
+def _test_replicate_wan(credentials: dict[str, str]) -> ConnectionTestResult:
+    api_key = credentials.get("api_key")
+    if not api_key:
+        return ConnectionTestResult("replicate_wan", False, ConnectionTestMode.LIVE, "No API token configured.")
+    try:
+        resp = httpx.get(
+            "https://api.replicate.com/v1/account",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=_REQUEST_TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        return ConnectionTestResult("replicate_wan", False, ConnectionTestMode.LIVE, f"Request failed: {exc}")
+
+    if resp.status_code == 200:
+        return ConnectionTestResult(
+            "replicate_wan", True, ConnectionTestMode.LIVE, "Connected -- account retrieved."
+        )
+    if resp.status_code in (401, 403):
+        return ConnectionTestResult("replicate_wan", False, ConnectionTestMode.LIVE, "Rejected: API token invalid.")
+    return ConnectionTestResult(
+        "replicate_wan", False, ConnectionTestMode.LIVE, f"Unexpected status {resp.status_code}."
+    )
+
+
 _LIVE_CHECKS = {
     "heygen": _test_heygen,
     "elevenlabs": _test_elevenlabs,
     "openai": _test_openai,
+    "replicate_wan": _test_replicate_wan,
 }
 
 

@@ -11,12 +11,17 @@ and adding one branch below.
 
 from __future__ import annotations
 
+from typing import Union
+
 from sqlmodel import Session
 
 from ..services.active_vendor import get_active_vendor
 from .elevenlabs import ElevenLabsClient, get_elevenlabs_client
 from .gemini_omni import GeminiOmniClient, get_gemini_omni_client
 from .heygen import HeyGenClient, get_heygen_client
+from .replicate_wan import ReplicateWanClient, get_replicate_wan_client
+
+HeroShotClient = Union[GeminiOmniClient, ReplicateWanClient]
 
 
 def _resolve_session(session: Session | None) -> Session:
@@ -53,13 +58,15 @@ def get_active_tts_client(*, session: Session | None = None) -> ElevenLabsClient
             s.close()
 
 
-def get_active_hero_shot_client(*, session: Session | None = None) -> GeminiOmniClient:
+def get_active_hero_shot_client(*, session: Session | None = None) -> HeroShotClient:
     owned = session is None
     s = _resolve_session(session)
     try:
         vendor = get_active_vendor(s, "hero_shot_animation")
         if vendor == "gemini_omni":
             return get_gemini_omni_client(session=s)
+        if vendor == "replicate_wan":
+            return get_replicate_wan_client(session=s)
         raise ValueError(f"No client dispatch registered for hero_shot_animation vendor {vendor!r}")
     finally:
         if owned:

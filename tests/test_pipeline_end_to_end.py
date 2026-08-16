@@ -98,6 +98,7 @@ def _no_network(monkeypatch, tmp_path):
     monkeypatch.setattr(secrets_mod, "DEFAULT_KEY_PATH", tmp_path / "isolated_secret.key")
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("REPLICATE_API_TOKEN", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_MAPS_3D_TILES_KEY", raising=False)
 
