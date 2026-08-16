@@ -520,11 +520,29 @@
       const pool = document.getElementById('ws-photo-pool');
       if (!pool) return;
       pool.innerHTML = arrangeState.photos.map(p => `
-        <div class="aspect-square rounded-lg overflow-hidden border border-slate-800 cursor-grab bg-slate-800 flex items-center justify-center text-[9px] text-slate-500 text-center p-1"
+        <div class="relative aspect-square rounded-lg overflow-hidden border ${p.needs_touchup ? 'border-amber-500' : 'border-slate-800'} cursor-grab bg-slate-800 flex items-center justify-center text-[9px] text-slate-500 text-center p-1"
           draggable="true" ondragstart="onPhotoDragStart(event, ${p.id})" title="${escapeHtml(p.source_path)}">
           Photo #${p.id}
+          <button onclick="event.stopPropagation(); toggleTouchup(${p.id}, ${!p.needs_touchup})"
+            title="${p.needs_touchup ? 'Needs manual touch-up (e.g. in Photopea) — click to clear' : 'Flag for manual touch-up before this photo is used'}"
+            class="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] leading-none ${p.needs_touchup ? 'bg-amber-500 text-slate-900' : 'bg-slate-900/70 text-slate-500 hover:text-amber-400'}">
+            ✎
+          </button>
         </div>
       `).join('');
+    }
+
+    async function toggleTouchup(photoId, needsTouchup) {
+      const res = await fetch(`/api/photos/${photoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ needs_touchup: needsTouchup })
+      });
+      if (!res.ok) return;
+      const updated = await res.json();
+      const photo = arrangeState.photos.find(p => p.id === photoId);
+      if (photo) photo.needs_touchup = updated.needs_touchup;
+      renderPhotoPool();
     }
 
     function renderSegmentList() {

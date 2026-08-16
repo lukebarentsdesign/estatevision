@@ -114,6 +114,15 @@ class Photo(SQLModel, table=True):
     sky_replaced: bool = False
     order_index: int = 0
 
+    # Set by an operator in the arrange step when a photo needs manual
+    # retouching (removing clutter, cloning out a passer-by, straightening a
+    # vertical) before it's usable -- nothing in this pipeline does that kind
+    # of edit automatically. Purely informational: it does not block the
+    # pipeline from running, gate any step, or get cleared automatically:
+    # a human clears it once the fix is done outside the app (e.g. in
+    # Photopea) and the photo is replaced or re-uploaded.
+    needs_touchup: bool = False
+
     job: Optional[PropertyJob] = Relationship(back_populates="photos")
 
 

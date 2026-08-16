@@ -436,6 +436,36 @@ def list_job_photos(
     ).all()
 
 
+class UpdatePhotoRequest(BaseModel):
+    is_hero: Optional[bool] = None
+    needs_touchup: Optional[bool] = None
+
+
+@app.patch("/api/photos/{photo_id}")
+def update_photo(
+    photo_id: int,
+    body: UpdatePhotoRequest,
+    agency: AgentProfile = Depends(require_agency),
+    session: Session = Depends(get_session),
+) -> Photo:
+    photo = session.get(Photo, photo_id)
+    if photo is None:
+        raise HTTPException(404, "photo not found")
+    job = session.get(PropertyJob, photo.job_id)
+    if job is None or job.agent_id != agency.id:
+        raise HTTPException(404, "photo not found")
+
+    if body.is_hero is not None:
+        photo.is_hero = body.is_hero
+    if body.needs_touchup is not None:
+        photo.needs_touchup = body.needs_touchup
+
+    session.add(photo)
+    session.commit()
+    session.refresh(photo)
+    return photo
+
+
 class CreateSegmentRequest(BaseModel):
     text: str
     order_index: Optional[int] = None
