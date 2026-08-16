@@ -173,6 +173,7 @@ in the admin panel) so existing `.env`-based setups keep working:
 |---|---|
 | `OPENAI_API_KEY` | Script generation LLM |
 | `ELEVENLABS_API_KEY` | Voiceover (voice-only jobs) — **real client implemented** |
+| `FISH_AUDIO_API_KEY` | Voiceover (voice-only jobs) — **real client implemented**; alternate vendor in the same `tts` category as ElevenLabs |
 | `HEYGEN_API_KEY` | Avatar intro/outro — **real client implemented** |
 | `GEMINI_API_KEY` | Hero-shot motion (Veo, via Gemini API) — **real client implemented** |
 | `REPLICATE_API_TOKEN` | Hero-shot motion (Wan 2.2, via Replicate) — **real client implemented**; alternate vendor in the same `hero_shot_animation` category as Gemini Omni, runs on Replicate's hosted GPUs instead of a local one |
@@ -186,8 +187,8 @@ Every `app/clients/*.py` module exposes a `get_*_client(*, session=None)`
 factory that returns a stub unless a key is configured (admin panel first,
 env var fallback), at which point it returns an `Http*` class.
 
-**ElevenLabs, HeyGen, OpenAI, Gemini Omni (Veo), and Replicate (Wan 2.2) are
-done** — real HTTP calls, tested against a mocked transport in
+**ElevenLabs, Fish Audio, HeyGen, OpenAI, Gemini Omni (Veo), and Replicate
+(Wan 2.2) are done** — real HTTP calls, tested against a mocked transport in
 `tests/test_real_clients.py`. Several details weren't independently confirmed
 against live docs and are flagged in the source with a pointer to what to
 check first if the real call fails:
@@ -206,6 +207,13 @@ check first if the real call fails:
   shown in Google's own published example — confirmed by a live 400 against
   `veo-3.1-generate-preview` on 2026-08-15 (`inlineData` is rejected outright
   regardless of image validity).
+- `app/clients/fish_audio.py` — confirmed against `docs.fish.audio`
+  (`api.fish.audio` base domain, per the official developer page). A
+  different, unofficial domain (`fishaudio.org`) publishes a conflicting
+  endpoint path and field names (`voiceId` instead of `reference_id`) —
+  do not use that source. Not independently confirmed: whether
+  `reference_id` accepts an arbitrary/bare voice ID or requires a voice
+  first registered through Fish Audio's own voice-cloning flow.
 - `app/clients/replicate_wan.py` — confirmed against the model's real
   OpenAPI schema fetched with a live token: `image`/`prompt` are the correct
   input fields, and a live generation call with a base64 data URI in

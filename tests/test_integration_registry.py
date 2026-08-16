@@ -14,7 +14,7 @@ def test_avatar_and_tts_and_hero_shot_categories_have_expected_members() -> None
         by_category.setdefault(d.category_key, []).append(d.slug)
 
     assert by_category["avatar"] == ["heygen"]
-    assert by_category["tts"] == ["elevenlabs"]
+    assert by_category["tts"] == ["elevenlabs", "fish_audio"]
     assert by_category["hero_shot_animation"] == ["gemini_omni", "replicate_wan"]
     assert by_category["script_generation"] == ["openai"]
     assert "aerial_flyover" not in by_category

@@ -109,6 +109,31 @@ def _test_openai(credentials: dict[str, str]) -> ConnectionTestResult:
     return ConnectionTestResult("openai", False, ConnectionTestMode.LIVE, f"Unexpected status {resp.status_code}.")
 
 
+def _test_fish_audio(credentials: dict[str, str]) -> ConnectionTestResult:
+    api_key = credentials.get("api_key")
+    if not api_key:
+        return ConnectionTestResult("fish_audio", False, ConnectionTestMode.LIVE, "No API key configured.")
+    base_url = (credentials.get("base_url") or "https://api.fish.audio").rstrip("/")
+    try:
+        resp = httpx.get(
+            f"{base_url}/wallet/self/api-credit",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=_REQUEST_TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        return ConnectionTestResult("fish_audio", False, ConnectionTestMode.LIVE, f"Request failed: {exc}")
+
+    if resp.status_code == 200:
+        return ConnectionTestResult(
+            "fish_audio", True, ConnectionTestMode.LIVE, "Connected -- account credit retrieved."
+        )
+    if resp.status_code in (401, 403):
+        return ConnectionTestResult("fish_audio", False, ConnectionTestMode.LIVE, "Rejected: API key invalid.")
+    return ConnectionTestResult(
+        "fish_audio", False, ConnectionTestMode.LIVE, f"Unexpected status {resp.status_code}."
+    )
+
+
 def _test_replicate_wan(credentials: dict[str, str]) -> ConnectionTestResult:
     api_key = credentials.get("api_key")
     if not api_key:
@@ -136,6 +161,7 @@ def _test_replicate_wan(credentials: dict[str, str]) -> ConnectionTestResult:
 _LIVE_CHECKS = {
     "heygen": _test_heygen,
     "elevenlabs": _test_elevenlabs,
+    "fish_audio": _test_fish_audio,
     "openai": _test_openai,
     "replicate_wan": _test_replicate_wan,
 }

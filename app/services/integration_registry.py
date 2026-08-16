@@ -86,6 +86,24 @@ INTEGRATIONS: tuple[IntegrationDefinition, ...] = (
         used_by=("script_and_voice pipeline step",),
     ),
     IntegrationDefinition(
+        slug="fish_audio",
+        name="Fish Audio",
+        category="Avatar & Voice",
+        category_key="tts",
+        description=(
+            "Alternative TTS vendor to ElevenLabs for voice-only narration jobs (§1.3, §4 "
+            "standard). Pick the active vendor for this category below."
+        ),
+        fields=(
+            CredentialField("api_key", "API Key", FieldKind.API_KEY, help_text="From fish.audio/developers."),
+            CredentialField("base_url", "API Base URL", FieldKind.BASE_URL, required=False,
+                             placeholder="https://api.fish.audio"),
+        ),
+        docs_url="https://docs.fish.audio",
+        test_mode=ConnectionTestMode.LIVE,
+        used_by=("script_and_voice pipeline step",),
+    ),
+    IntegrationDefinition(
         slug="gemini_omni",
         name="Gemini Omni (Google)",
         category="Video & Image Generation",

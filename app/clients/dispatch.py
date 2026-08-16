@@ -17,11 +17,13 @@ from sqlmodel import Session
 
 from ..services.active_vendor import get_active_vendor
 from .elevenlabs import ElevenLabsClient, get_elevenlabs_client
+from .fish_audio import FishAudioClient, get_fish_audio_client
 from .gemini_omni import GeminiOmniClient, get_gemini_omni_client
 from .heygen import HeyGenClient, get_heygen_client
 from .replicate_wan import ReplicateWanClient, get_replicate_wan_client
 
 HeroShotClient = Union[GeminiOmniClient, ReplicateWanClient]
+TtsClient = Union[ElevenLabsClient, FishAudioClient]
 
 
 def _resolve_session(session: Session | None) -> Session:
@@ -45,13 +47,15 @@ def get_active_avatar_client(*, session: Session | None = None) -> HeyGenClient:
             s.close()
 
 
-def get_active_tts_client(*, session: Session | None = None) -> ElevenLabsClient:
+def get_active_tts_client(*, session: Session | None = None) -> TtsClient:
     owned = session is None
     s = _resolve_session(session)
     try:
         vendor = get_active_vendor(s, "tts")
         if vendor == "elevenlabs":
             return get_elevenlabs_client(session=s)
+        if vendor == "fish_audio":
+            return get_fish_audio_client(session=s)
         raise ValueError(f"No client dispatch registered for tts vendor {vendor!r}")
     finally:
         if owned:

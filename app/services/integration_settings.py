@@ -46,6 +46,7 @@ class IntegrationStatus:
 _ENV_FALLBACKS: dict[tuple[str, str], str] = {
     ("heygen", "api_key"): "HEYGEN_API_KEY",
     ("elevenlabs", "api_key"): "ELEVENLABS_API_KEY",
+    ("fish_audio", "api_key"): "FISH_AUDIO_API_KEY",
     ("gemini_omni", "api_key"): "GEMINI_API_KEY",
     ("replicate_wan", "api_key"): "REPLICATE_API_TOKEN",
     ("openai", "api_key"): "OPENAI_API_KEY",

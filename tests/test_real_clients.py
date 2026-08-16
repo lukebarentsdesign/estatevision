@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from app.clients.elevenlabs import ElevenLabsError, HttpElevenLabsClient
+from app.clients.fish_audio import FishAudioError, HttpFishAudioClient
 from app.clients.gemini_omni import GeminiOmniError, HttpGeminiOmniClient
 from app.clients.heygen import HeyGenError, HttpHeyGenClient
 from app.clients.openai_llm import HttpOpenAILLMClient, OpenAIError
@@ -92,6 +93,66 @@ def test_elevenlabs_raises_on_network_error(tmp_path: Path, monkeypatch) -> None
     )
     with pytest.raises(ElevenLabsError, match="request failed"):
         client.synthesize(voice_id="v1", text="Hi", output_path=tmp_path / "out.mp3")
+
+
+# --- Fish Audio ----------------------------------------------------------------
+
+
+def test_fish_audio_synthesize_writes_audio_bytes(tmp_path: Path, monkeypatch) -> None:
+    fake_audio = b"\xff\xfb\x90\x00fake-mp3-bytes"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/v1/tts"
+        assert request.headers["authorization"] == "Bearer test_key"
+        return httpx.Response(200, content=fake_audio)
+
+    client = _client_with_transport(
+        HttpFishAudioClient, httpx.MockTransport(handler), monkeypatch, api_key="test_key"
+    )
+    output = client.synthesize(voice_id="ref_abc", text="Hello", output_path=tmp_path / "out.mp3")
+
+    assert output.read_bytes() == fake_audio
+
+
+def test_fish_audio_sends_text_and_reference_id(tmp_path: Path, monkeypatch) -> None:
+    import json
+
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, content=b"audio")
+
+    client = _client_with_transport(
+        HttpFishAudioClient, httpx.MockTransport(handler), monkeypatch, api_key="k"
+    )
+    client.synthesize(voice_id="ref_1", text="Welcome home.", output_path=tmp_path / "out.mp3")
+
+    assert captured["body"]["text"] == "Welcome home."
+    assert captured["body"]["reference_id"] == "ref_1"
+
+
+def test_fish_audio_raises_on_error_status(tmp_path: Path, monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, text="invalid_api_key")
+
+    client = _client_with_transport(
+        HttpFishAudioClient, httpx.MockTransport(handler), monkeypatch, api_key="bad_key"
+    )
+    with pytest.raises(FishAudioError, match="401"):
+        client.synthesize(voice_id="ref_1", text="Hi", output_path=tmp_path / "out.mp3")
+
+
+def test_fish_audio_raises_on_network_error(tmp_path: Path, monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    client = _client_with_transport(
+        HttpFishAudioClient, httpx.MockTransport(handler), monkeypatch, api_key="k"
+    )
+    with pytest.raises(FishAudioError, match="request failed"):
+        client.synthesize(voice_id="ref_1", text="Hi", output_path=tmp_path / "out.mp3")
 
 
 # --- HeyGen --------------------------------------------------------------------
