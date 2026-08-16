@@ -206,17 +206,16 @@ check first if the real call fails:
   shown in Google's own published example — confirmed by a live 400 against
   `veo-3.1-generate-preview` on 2026-08-15 (`inlineData` is rejected outright
   regardless of image validity).
-- `app/clients/replicate_wan.py` — the prediction create/poll/download flow
-  (`POST /v1/predictions`, `Bearer` auth) is confirmed against Replicate's
-  general HTTP API reference, but the Wan 2.2 model's exact input field names
-  (`image`, `prompt`) are Replicate's conventional names, not verified
-  against this specific model's OpenAPI schema (which requires an
-  authenticated call to inspect). Check
-  `https://replicate.com/wan-video/wan-2.2-i2v-fast/api` first if the real
-  call fails. Runs on Replicate's hosted GPUs rather than locally — this app
-  doesn't assume the host machine has a GPU with enough VRAM for the
-  upstream [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) project (6GB+
-  minimum) to run natively.
+- `app/clients/replicate_wan.py` — confirmed against the model's real
+  OpenAPI schema fetched with a live token: `image`/`prompt` are the correct
+  input fields, and a live generation call with a base64 data URI in
+  `image` was accepted through to billing enforcement (402 insufficient
+  credit, not a validation error), confirming Replicate accepts data URIs
+  there despite the schema documenting `image` as a URL. Runs on Replicate's
+  hosted GPUs rather than locally — this app doesn't assume the host machine
+  has a GPU with enough VRAM for the upstream
+  [Wan2GP](https://github.com/deepbeepmeep/Wan2GP) project (6GB+ minimum) to
+  run natively.
 
 Everything else (Google 3D Tiles) still raises `NotImplementedError` with a
 pointer to what needs wiring once available — the call sites in

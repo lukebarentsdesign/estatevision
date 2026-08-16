@@ -6,17 +6,17 @@ category_key and the admin panel picks which one is active). Runs the Wan 2.2
 image-to-video model on Replicate's hosted infrastructure rather than a local
 GPU, since this app's target machines are not assumed to have one.
 
-NOT independently confirmed against live Replicate docs (the model's own API
-page is JS-rendered and the input schema requires an authenticated call to
-`GET /v1/models/wan-video/{model}` to inspect): the exact input field names
-below (`image`, `prompt`, `resolution`, `go_fast`) are Replicate's
-conventional field names for Wan image-to-video models, not verified against
-this specific model's OpenAPI schema. The prediction create/poll/download
-flow (`POST /v1/predictions`, `GET /v1/predictions/{id}`, `Bearer` auth) is
-confirmed against Replicate's general HTTP API reference
-(replicate.com/docs/reference/http, fetched 2026-08-16). Treat the first real
-call as the actual verification step for the input field names -- check
-https://replicate.com/wan-video/wan-2.2-i2v-fast/api first if it fails.
+Confirmed against the model's real OpenAPI schema (`GET
+/v1/models/wan-video/wan-2.2-i2v-fast`, fetched 2026-08-16 with a live
+token): `image` (schema type `format: uri`) and `prompt` are the correct,
+required input field names. The schema documents `image` as a URL, not a
+data URI, but a live `POST .../predictions` call with a base64 data URI in
+that field was accepted and passed validation through to billing
+enforcement (402 insufficient credit, not a 4xx shape/validation error) --
+confirming Replicate accepts data URIs here despite the schema saying
+`uri`. The prediction create/poll/download flow (`POST /v1/predictions`,
+`GET /v1/predictions/{id}`, `Bearer` auth) is confirmed against Replicate's
+general HTTP API reference (replicate.com/docs/reference/http).
 
 Standing rule mirrored from gemini_omni.py: subtle, forward-facing motion
 only for hero shots -- large or reversing moves risk the same hallucinated-
